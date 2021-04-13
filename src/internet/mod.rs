@@ -1,6 +1,6 @@
 //#![allow(dead_code)]
 
-use std::{collections::HashMap, fmt::Debug, hash::Hash};
+use std::{collections::HashMap, fmt::Debug, hash::Hash, io::BufRead};
 use std::any::Any;
 use std::ops::Range;
 
@@ -8,6 +8,7 @@ use rand::Rng;
 use petgraph::Graph;
 use nalgebra::Point2;
 use plotters::style::RGBColor;
+use serde::de::DeserializeOwned;
 use smallvec::SmallVec;
 
 mod router;
@@ -72,6 +73,9 @@ impl<CN: CustomNode> NetSim<CN> {
 			router: NetSimRouter::new(FIELD_DIMENSIONS),
 			route_coord_dht: HashMap::new(),
 		}
+	}
+	pub fn from_reader<CND: CustomNode + DeserializeOwned>(reader: impl BufRead) -> anyhow::Result<NetSim<CND>> {
+		Ok(bincode::deserialize_from(reader)?)
 	}
 	pub fn lease(&self) -> NetAddr { self.nodes.len() as NetAddr }
 	pub fn add_node(&mut self, node: CN, rng: &mut impl Rng) {
