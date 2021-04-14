@@ -27,6 +27,7 @@ pub mod plot;
 use rand::SeedableRng;
 
 mod cli;
+mod ui;
 
 const CACHE_FILE: &str = "./target/net.cache";
 
@@ -44,6 +45,10 @@ fn main() -> anyhow::Result<()> {
 		NetSim::<Node>::new()
 	};
 
-	cli::run(&mut internet, rng)
+	//cli::run(&mut internet, rng)
+	use ui::{Example, Settings};
+	use iced::Sandbox;
+	Example::run(Settings::default())?;
+	Ok(())
 }
 

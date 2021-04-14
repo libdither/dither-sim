@@ -25,6 +25,15 @@
 				cmake
 				pkg-config
 				fontconfig
+				
+				x11
+				xorg.libXcursor
+				xorg.libXrandr
+				xorg.libXi
+				vulkan-tools
+				vulkan-headers
+				vulkan-loader
+				vulkan-validation-layers
 			];
 			buildInputs = with pkgs; [
 				freetype
