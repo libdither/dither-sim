@@ -21,9 +21,9 @@
 		packages.dbr-sim = naersk-lib.buildPackage {
 			pname = "dbr-sim";
 			root = ./.;
-			nativeBuildInputs = with pkgs; [
+			buildInputs = with pkgs; [
 				cmake
-				pkg-config
+				pkgconfig
 				fontconfig
 				
 				x11
@@ -34,8 +34,6 @@
 				vulkan-headers
 				vulkan-loader
 				vulkan-validation-layers
-			];
-			buildInputs = with pkgs; [
 				freetype
 			];
 		};
@@ -49,7 +47,10 @@
 
 		# `nix develop`
 		devShell = pkgs.mkShell {
-			nativeBuildInputs = packages.dbr-sim.nativeBuildInputs;
+			buildInputs = packages.dbr-sim.buildInputs ++ [ pkgs.llvmPackages_12.lldClang.bintools ];
+			LD_LIBRARY_PATH = "${nixpkgs.lib.makeLibraryPath packages.dbr-sim.buildInputs}";
+			hardeningDisable = [ "fortify" ];
+			NIX_CFLAGS_LINK = "-fuse-ld=lld";
 		};
 	});
 }
