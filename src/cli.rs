@@ -1,4 +1,4 @@
-
+#![allow(dead_code)]
 use std::{fs::File, io::{self, BufReader, prelude::*}};
 use anyhow::Context;
 

@@ -38,17 +38,17 @@ fn main() -> anyhow::Result<()> {
 
 	let rng = &mut rand::rngs::SmallRng::seed_from_u64(0);
 	// Try and read cache file, else gen new network
-	let mut internet = if let Ok(cache_reader) = fs::File::open(CACHE_FILE).map(|f|BufReader::new(f)) {
-		println!("Loaded Cached Network: {}", CACHE_FILE);
-		NetSim::<Node>::from_reader(cache_reader)?
-	} else {
-		NetSim::<Node>::new()
-	};
+	let mut internet =
+		if let Ok(cache_reader) = fs::File::open(CACHE_FILE).map(|f| BufReader::new(f)) {
+			println!("Loaded Cached Network: {}", CACHE_FILE);
+			NetSim::<Node>::from_reader(cache_reader)?
+		} else {
+			NetSim::<Node>::new()
+		};
 
 	//cli::run(&mut internet, rng)
-	use ui::{Example, Settings};
 	use iced::Sandbox;
+	use ui::{Example, Settings};
 	Example::run(Settings::default())?;
 	Ok(())
 }
-
