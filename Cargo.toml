@@ -32,7 +32,7 @@ vpsearch = "2.0.1"
 permutation_iterator = "0.1.2"
 csv = "1.1.6"
 
-iced = { git = "https://github.com/hecrj/iced" }
-iced_native = { git = "https://github.com/hecrj/iced", package = "iced_native" }
-iced_graphics = { git = "https://github.com/hecrj/iced", package = "iced_graphics" }
+iced = { git = "https://github.com/zyansheep/iced" }
+iced_native = { git = "https://github.com/zyansheep/iced" }
+iced_graphics = { git = "https://github.com/zyansheep/iced" }
 iced_aw = { git = "https://github.com/iced-rs/iced_aw", default-features = false, features = ["tab_bar", "tabs"] }
