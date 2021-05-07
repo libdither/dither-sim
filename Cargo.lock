@@ -299,12 +299,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "csv",
- "dbr-sim",
  "env_logger",
  "fancy-regex",
  "permutation_iterator",
  "rand 0.8.3",
  "serde",
+ "sim",
 ]
 
 [[package]]
@@ -627,27 +627,13 @@ name = "dbr-sim"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bimap",
- "bincode",
- "bitflags",
- "csv",
- "derivative",
  "env_logger",
- "fancy-regex",
- "log",
- "nalgebra",
- "permutation_iterator",
- "petgraph",
- "plotters",
- "priority-queue",
+ "iced",
+ "iced_aw",
+ "iced_graphics 0.2.0 (git+https://github.com/zyansheep/iced)",
+ "iced_native 0.4.0 (git+https://github.com/zyansheep/iced)",
  "rand 0.8.3",
- "serde",
- "serde_json",
- "slotmap 1.0.3",
- "smallvec",
- "ta",
- "thiserror",
- "vpsearch",
+ "sim",
 ]
 
 [[package]]
@@ -1329,20 +1315,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "363e3677e55ad168fef68cf9de3a4a310b53124c5e784c53a1d70e92d23f2126"
 dependencies = [
  "bitflags",
-]
-
-[[package]]
-name = "gui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dbr-sim",
- "env_logger",
- "iced",
- "iced_aw",
- "iced_graphics 0.2.0 (git+https://github.com/zyansheep/iced)",
- "iced_native 0.4.0 (git+https://github.com/zyansheep/iced)",
- "rand 0.8.3",
 ]
 
 [[package]]
@@ -2746,6 +2718,34 @@ dependencies = [
  "expat-sys",
  "freetype-sys",
  "pkg-config",
+]
+
+[[package]]
+name = "sim"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bimap",
+ "bincode",
+ "bitflags",
+ "csv",
+ "derivative",
+ "env_logger",
+ "fancy-regex",
+ "log",
+ "nalgebra",
+ "permutation_iterator",
+ "petgraph",
+ "plotters",
+ "priority-queue",
+ "rand 0.8.3",
+ "serde",
+ "serde_json",
+ "slotmap 1.0.3",
+ "smallvec",
+ "ta",
+ "thiserror",
+ "vpsearch",
 ]
 
 [[package]]

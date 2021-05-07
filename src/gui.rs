@@ -3,7 +3,7 @@ use crate::graph::Circle;
 pub use iced::Settings;
 use iced::{Align, Application, Clipboard, Column, Command, Container, Element, Length, Slider, Text, executor, slider};
 
-use dbr_sim::{internet::NetSim, node::Node};
+use sim::{internet::NetSim, node::Node};
 
 pub struct NetSimApp {
 	internet: NetSim<Node>,

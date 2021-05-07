@@ -1,6 +1,6 @@
 use std::{fs, io::BufReader};
 
-use dbr_sim::{DEFAULT_CACHE_FILE, NetSim, Node};
+use sim::{DEFAULT_CACHE_FILE, NetSim, Node};
 use iced::{Application, Settings};
 use rand::{rngs::SmallRng, SeedableRng};
 

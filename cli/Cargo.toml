@@ -6,7 +6,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dbr-sim = { path = "..", features = ["plot"] }
+sim = { path = "../sim", features = ["plot"] }
 anyhow = "1.0.40"
 env_logger = "*"
 rand = "*"

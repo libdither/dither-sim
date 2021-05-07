@@ -2,7 +2,7 @@
 use std::{fs::File, io::{self, prelude::*}};
 use anyhow::{Context, bail, anyhow};
 
-use crate::dbr_sim::{
+use crate::sim::{
 	internet::{NetAddr, NetSim, CustomNode},
 	node::{self, Node, NodeAction, NodeID},
 	DEFAULT_CACHE_FILE, plot
