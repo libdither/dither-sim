@@ -1,20 +1,18 @@
 //#![allow(dead_code)]
 
-use std::{collections::HashMap, fmt::Debug, hash::Hash, io::BufRead};
+use std::{collections::HashMap, fmt::Debug, fs::File, hash::Hash, io::{BufRead, BufReader, Write}};
 use std::any::Any;
 use std::ops::Range;
 
+use anyhow::Context;
 use rand::Rng;
-use petgraph::Graph;
-use nalgebra::Point2;
-use plotters::style::RGBColor;
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, de::DeserializeOwned};
 use smallvec::SmallVec;
 
 mod router;
 use router::NetSimRouter;
 
-use crate::node::{Node, RouteCoord};
+use crate::{Node, node::RouteCoord};
 
 pub const FIELD_DIMENSIONS: (Range<i32>, Range<i32>) = (-320..320, -130..130);
 
@@ -22,6 +20,8 @@ pub const FIELD_DIMENSIONS: (Range<i32>, Range<i32>) = (-320..320, -130..130);
 pub enum InternetError {
 	#[error("There is no node for this NetAddr: {net_addr}")]
 	NoNodeError { net_addr: NetAddr },
+	#[error(transparent)]
+	Other(#[from] anyhow::Error),
 }
 
 #[derive(Debug)]
@@ -50,7 +50,7 @@ pub type NetSimPacketVec<CN> = SmallVec<[NetSimPacket<CN>; 32]>;
 
 pub trait CustomNode: Debug + Default {
 	type CustomNodeAction;
-	type CustomNodeUUID: Debug + Hash + Eq + Clone + serde::Serialize + serde::de::DeserializeOwned;
+	type CustomNodeUUID: Debug + Hash + Eq + Clone + serde::Serialize + DeserializeOwned;
 	fn net_addr(&self) -> NetAddr;
 	fn unique_id(&self) -> Self::CustomNodeUUID;
 	fn tick(&mut self, incoming: NetSimPacketVec<Self>) -> NetSimPacketVec<Self>;
@@ -129,44 +129,16 @@ impl<CN: CustomNode> NetSim<CN> {
 		}
 	}
 }
-
-use crate::plot::GraphPlottable;
-impl GraphPlottable for NetSim<Node> {
-	fn gen_graph(&self) -> Graph<(String, Point2<i32>), RGBColor> {
-		//let root = BitMapBackend::new(path, dimensions).into_drawing_area();
-		/* for (idx, node) in &self.nodes {
-
-		} */
-		use petgraph::data::{FromElements, Element};
-		let nodes: Vec<Element<(String, Point2<i32>),RGBColor>> = self.router.node_map.iter().map(|(&net_addr, lc)|{
-			Element::Node {
-				weight: (
-					net_addr.to_string(),
-					lc.position.map(|i|i as i32),
-				)
-			}
-		}).collect();
-
-		let node_idx_map = &self.router.node_map.iter().enumerate().map(|(idx,(&id,_))|(id,idx)).collect::<HashMap<NetAddr,usize>>();
-
-		let edges = self.nodes.iter().enumerate().map(|(_, (net_addr, node))|{
-			node.remotes.iter().filter_map(move |(_,remote)|{
-				// Set color based on 
-				remote.session().ok().map(|s|{
-					s.direct().ok().map(|d|{
-						let color = if s.is_peer() { RGBColor(0,0,0) } else { RGBColor(255,255,255) };
-						(d.net_addr, color)
-					})
-				}).flatten()
-			}).map(move |(remote_net_addr, color)|{
-				Element::Edge {
-					source: node_idx_map[&net_addr],
-					target: node_idx_map[&remote_net_addr],
-					weight: color,
-				}
-			})
-		}).flatten();
-		let graph = Graph::from_elements(nodes.into_iter().chain(edges));
-		graph
+impl NetSim<Node> {
+	pub fn save(&self, filepath: &str) -> Result<(), InternetError> {
+		let mut file = File::create(filepath).context("failed to create file (check perms) at {}")?;
+		let data = bincode::serialize(&self).context("failed to serialize network")?;
+		file.write_all(&data).context("failed to write to file")?;
+		Ok(())
+	}
+	pub fn load(&mut self, filepath: &str) -> Result<(), InternetError> {
+		let file = File::open(filepath).context("failed to open file (check perms)")?;
+		*self = bincode::deserialize_from(BufReader::new(file)).context("failed to deserialize network")?;
+		Ok(())
 	}
 }

@@ -1,0 +1,16 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dbr-sim = { path = "..", features = ["plot"] }
+anyhow = "1.0.40"
+env_logger = "*"
+rand = "*"
+fancy-regex = "0.5.0"
+csv = "1.1.6"
+permutation_iterator = "0.1.2"
+serde = { version = "1.0", features = ["derive"] }

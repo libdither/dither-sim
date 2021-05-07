@@ -294,6 +294,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "csv",
+ "dbr-sim",
+ "env_logger",
+ "fancy-regex",
+ "permutation_iterator",
+ "rand 0.8.3",
+ "serde",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -620,10 +634,6 @@ dependencies = [
  "derivative",
  "env_logger",
  "fancy-regex",
- "iced",
- "iced_aw",
- "iced_graphics 0.2.0 (git+https://github.com/zyansheep/iced)",
- "iced_native 0.4.0 (git+https://github.com/zyansheep/iced)",
  "log",
  "nalgebra",
  "permutation_iterator",
@@ -1322,6 +1332,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "gui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dbr-sim",
+ "env_logger",
+ "iced",
+ "iced_aw",
+ "iced_graphics 0.2.0 (git+https://github.com/zyansheep/iced)",
+ "iced_native 0.4.0 (git+https://github.com/zyansheep/iced)",
+ "rand 0.8.3",
+]
+
+[[package]]
 name = "guillotiere"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1366,7 +1390,7 @@ dependencies = [
 [[package]]
 name = "iced_aw"
 version = "0.1.0"
-source = "git+https://github.com/iced-rs/iced_aw#cd2edf1dd3f1fff2598bbb01f1e538a22d3865e8"
+source = "git+https://github.com/iced-rs/iced_aw#7a6918a50fa6784ce7d11348b71ea4331d9d6200"
 dependencies = [
  "dodrio",
  "iced_graphics 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2182,9 +2206,9 @@ checksum = "af8b08b04175473088b46763e51ee54da5f9a164bc162f615b91bc179dbf15a3"
 
 [[package]]
 name = "ordered-float"
-version = "2.1.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "766f840da25490628d8e63e529cd21c014f6600c6b8517add12a6fa6167a6218"
+checksum = "b50b8919aecb97e5ee9aceef27e24f39c46b11831130f4a6b7b091ec5de0de12"
 dependencies = [
  "num-traits",
 ]
@@ -2556,9 +2580,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85dd92e586f7355c633911e11f77f3d12f04b1b1bd76a198bd34ae3af8341ef2"
+checksum = "742739e41cd49414de871ea5e549afb7e2a3ac77b589bcbebe8c82fab37147fc"
 dependencies = [
  "bitflags",
 ]
@@ -2601,9 +2625,9 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
 name = "rustc-demangle"
-version = "0.1.18"
+version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e3bad0ee36814ca07d7968269dd4b7ec89ec2da10c4bb613928d3077083c232"
+checksum = "410f7acf3cb3a44527c5d9546bad4bf4e6c460915d5f9f2fc524498bfe8f70ce"
 
 [[package]]
 name = "rustc-hash"

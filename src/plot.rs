@@ -3,9 +3,11 @@ use plotters::coord::types::RangedCoordf32;
 //use plotters::style::RGBColor;
 
 use nalgebra::Point2;
-use petgraph::{Graph};
+use petgraph::{Graph, data::{Element, FromElements}};
 
-use std::ops::Range;
+use std::{collections::HashMap, ops::Range};
+
+use crate::{NetSim, Node, internet::NetAddr};
 
 const DEFAULT_BACKGROUND: RGBColor = RGBColor(200, 200, 200);
 
@@ -66,4 +68,61 @@ pub fn default_graph<GI: GraphPlottable>(item: &GI, render_range: &(Range<i32>, 
 		)?;
 	}
 	Ok(())
+}
+
+#[cfg(feature="plot")]
+impl GraphPlottable for Node {
+	fn gen_graph(&self) -> Graph<(String, Point2<i32>), RGBColor> {
+		/* for _node in self.route_map.nodes() {
+
+
+		} */
+		/* let node_index self.direct_sorted.iter().map(|(_, id)|self.remotes[id].)
+		self.route_map.clone().into_graph().filter_map(|idx, node_id|{
+			let remote = self.remote(&id).ok();
+			remote.map(|r|r.route_coord.map(|c|(id, c)))
+		}, |idx, _|{
+
+		}) */
+		Graph::with_capacity(0, 0)
+	}
+}
+
+impl GraphPlottable for NetSim<Node> {
+	fn gen_graph(&self) -> Graph<(String, Point2<i32>), RGBColor> {
+		//let root = BitMapBackend::new(path, dimensions).into_drawing_area();
+		/* for (idx, node) in &self.nodes {
+
+		} */
+		let nodes: Vec<Element<(String, Point2<i32>),RGBColor>> = self.router.node_map.iter().map(|(&net_addr, lc)|{
+			Element::Node {
+				weight: (
+					net_addr.to_string(),
+					lc.position.map(|i|i as i32),
+				)
+			}
+		}).collect();
+
+		let node_idx_map = &self.router.node_map.iter().enumerate().map(|(idx,(&id,_))|(id,idx)).collect::<HashMap<NetAddr,usize>>();
+
+		let edges = self.nodes.iter().enumerate().map(|(_, (net_addr, node))|{
+			node.remotes.iter().filter_map(move |(_,remote)|{
+				// Set color based on 
+				remote.session().ok().map(|s|{
+					s.direct().ok().map(|d|{
+						let color = if s.is_peer() { RGBColor(0,0,0) } else { RGBColor(255,255,255) };
+						(d.net_addr, color)
+					})
+				}).flatten()
+			}).map(move |(remote_net_addr, color)|{
+				Element::Edge {
+					source: node_idx_map[&net_addr],
+					target: node_idx_map[&remote_net_addr],
+					weight: color,
+				}
+			})
+		}).flatten();
+		let graph = Graph::from_elements(nodes.into_iter().chain(edges));
+		graph
+	}
 }

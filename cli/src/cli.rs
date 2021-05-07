@@ -1,11 +1,12 @@
 #![allow(dead_code)]
-use std::{fs::File, io::{self, BufReader, prelude::*}};
-use anyhow::Context;
+use std::{fs::File, io::{self, prelude::*}};
+use anyhow::{Context, bail, anyhow};
 
-use super::internet::{NetAddr, NetSim, CustomNode};
-use super::node::{self, Node, NodeAction, NodeID};
-use super::CACHE_FILE;
-use super::plot;
+use crate::dbr_sim::{
+	internet::{NetAddr, NetSim, CustomNode},
+	node::{self, Node, NodeAction, NodeID},
+	DEFAULT_CACHE_FILE, plot
+};
 
 pub fn run(internet: &mut NetSim<Node>, rng: &mut impl rand::Rng) -> anyhow::Result<()> {
 	let stdin = io::stdin();
@@ -68,22 +69,15 @@ fn parse_command(internet: &mut NetSim<Node>, input: &[&str], rng: &mut impl ran
 		["net", subcommand @ ..] => {
 			match subcommand {
 				["save", filepath] => {
-					let mut file = File::create(filepath).context("net: save: failed to create file (check perms)")?;
-					let data = bincode::serialize(&internet).context("net: save: failed to serialize network")?;
-					file.write_all(&data).context("net: save: failed to write to file")?;
+					internet.save(filepath).context("net: save: failed to load network: {}")?;
 				}
 				["save"] => bail!("net: save: must pass file path to save network"),
 				["load", filepath] => {
-					let file = File::open(filepath).context("net: load: failed to open file (check perms)")?;
-					let internet_new: NetSim<Node> = bincode::deserialize_from(BufReader::new(file)).context("net: load: failed to deserialize network")?;
-					*internet = internet_new;
-					//internet = bincode::deserialize_from(BufReader::new(file)).context("net: save: failed to serialize object")?;
+					internet.load(filepath).context("net: load: failed to load network: {}")?;
 				}
 				["load"] => bail!("net: load: must pass file path to load network"),
 				["cache"] => {
-					let mut cache_file = File::create(CACHE_FILE).context("net: cache: can't create ./net.cache (check perms?)")?;
-					let data = bincode::serialize(&internet).context("net: cache: failed to serialize network")?;
-					cache_file.write_all(&data).context("net: cache: failed to write to cache file")?;
+					internet.save(DEFAULT_CACHE_FILE)?;
 					println!("Created network cache");
 				}
 				["clear"] => *internet = NetSim::new(),

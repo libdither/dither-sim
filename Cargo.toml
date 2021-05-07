@@ -6,6 +6,12 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[workspace]
+members = ["cli", "gui"]
+
+[features]
+plot = ["plotters"]
+
 [dependencies]
 anyhow = "1.0.40"
 bitflags = "1.2.1"
@@ -13,7 +19,7 @@ derivative = "2.2.0"
 env_logger = "0.8.3"
 fancy-regex = "0.5.0"
 log = "0.4.14"
-plotters = { git = "https://github.com/zyansheep/plotters" }
+plotters = { git = "https://github.com/zyansheep/plotters", optional = true }
 priority-queue = "1.1.1"
 rand = { version = "0.8.3", features = ["small_rng"] }
 serde = { version = "1.0.125", features = ["derive"] }
@@ -31,8 +37,3 @@ thiserror = "1.0.24"
 vpsearch = "2.0.1"
 permutation_iterator = "0.1.2"
 csv = "1.1.6"
-
-iced = { git = "https://github.com/zyansheep/iced" }
-iced_native = { git = "https://github.com/zyansheep/iced" }
-iced_graphics = { git = "https://github.com/zyansheep/iced" }
-iced_aw = { git = "https://github.com/iced-rs/iced_aw", default-features = false, features = ["tab_bar", "tabs"] }

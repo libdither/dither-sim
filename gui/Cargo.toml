@@ -1,0 +1,17 @@
+[package]
+name = "gui"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dbr-sim = { path = ".." }
+anyhow = "*"
+
+iced = { git = "https://github.com/zyansheep/iced" }
+iced_native = { git = "https://github.com/zyansheep/iced" }
+iced_graphics = { git = "https://github.com/zyansheep/iced" }
+iced_aw = { git = "https://github.com/iced-rs/iced_aw", default-features = false, features = ["tab_bar", "tabs"] }
+env_logger = "0.8.3"
+rand = "0.8.3"
