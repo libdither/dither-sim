@@ -18,3 +18,4 @@ iced_graphics = { git = "https://github.com/zyansheep/iced" }
 iced_aw = { git = "https://github.com/iced-rs/iced_aw", default-features = false, features = ["tab_bar", "tabs"] }
 env_logger = "0.8.3"
 rand = "0.8.3"
+nalgebra = "0.26.2"

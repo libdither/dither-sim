@@ -1,5 +1,5 @@
 
-use crate::graph::Circle;
+use crate::graph::Graph;
 pub use iced::Settings;
 use iced::{Align, Application, Clipboard, Column, Command, Container, Element, Length, Slider, Text, executor, slider};
 
@@ -33,7 +33,6 @@ impl Application for NetSimApp {
 		}, Command::none())
 	}
 
-	
 	fn title(&self) -> String {
 		String::from("Custom widget - Iced")
 	}
@@ -53,8 +52,8 @@ impl Application for NetSimApp {
 			.spacing(20)
 			.max_width(500)
 			.align_items(Align::Center)
-			.push(Circle::new(self.radius))
-			.push(Text::new(format!("Radius: {:.2}", self.radius)))
+			.push(Graph::new(&self.internet))
+			/* .push(Text::new(format!("Radius: {:.2}", self.radius)))
 			.push(
 				Slider::new(
 					&mut self.slider,
@@ -63,7 +62,7 @@ impl Application for NetSimApp {
 					Message::RadiusChanged,
 				)
 				.step(0.01),
-			);
+			) */;
 
 		Container::new(content)
 			.width(Length::Fill)

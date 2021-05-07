@@ -14,15 +14,11 @@ mod session;
 pub mod types;
 
 pub use packet::{NodeEncryption, NodePacket, TraversedPacket};
-#[cfg(feature="plot")]
-use plotters::style::RGBColor;
 use remote::{RemoteNode, RemoteNodeError};
 use session::{RemoteSession, SessionError, SessionType};
 pub use types::{NodeID, RouteCoord, RouteScalar, SessionID};
 
 use crate::internet::{CustomNode, NetAddr, NetSimPacket, NetSimPacketVec, NetSimRequest};
-#[cfg(feature="plot")]
-use crate::plot::GraphPlottable;
 
 use bimap::BiHashMap;
 use petgraph::graphmap::DiGraphMap;
