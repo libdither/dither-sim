@@ -1,5 +1,5 @@
 //! This example showcases a simple native custom widget that draws a circle.
-use iced::{Font, HorizontalAlignment, Vector, VerticalAlignment};
+use iced::{Font, HorizontalAlignment, VerticalAlignment};
 // For now, to implement a custom native widget you will need to add
 // `iced_native` and `iced_wgpu` to your dependencies.
 //
@@ -9,13 +9,13 @@ use iced::{Font, HorizontalAlignment, Vector, VerticalAlignment};
 // Of course, you can choose to make the implementation renderer-agnostic,
 // if you wish to, by creating your own `Renderer` trait, which could be
 // implemented by `iced_wgpu` and other renderers.
-use iced_graphics::{Backend, Defaults, Primitive, Renderer, Transformation};
+use iced_graphics::{Backend, Defaults, Primitive, Renderer};
 use iced_native::{
 	layout, mouse, Background, Color, Element, Hasher, Layout, Length, Point, Rectangle, Size,
 	Widget,
 };
-use sim::{NetSim, Node};
 use nalgebra::Point2;
+use sim::{NetSim, Node};
 
 pub struct Graph<'a> {
 	internet: &'a NetSim<Node>,
@@ -32,15 +32,16 @@ where
 	B: Backend,
 {
 	fn width(&self) -> Length {
-		Length::Shrink
+		Length::Fill
 	}
 
 	fn height(&self) -> Length {
-		Length::Shrink
+		Length::Fill
 	}
 
-	fn layout(&self, _renderer: &Renderer<B>, _limits: &layout::Limits) -> layout::Node {
-		layout::Node::new(Size::new(200.0, 100.0))
+	fn layout(&self, _renderer: &Renderer<B>, limits: &layout::Limits) -> layout::Node {
+		println!("limits: {:?}", limits.fill());
+		layout::Node::new(Size::ZERO)
 	}
 
 	fn hash_layout(&self, state: &mut Hasher) {
@@ -56,7 +57,7 @@ where
 		_cursor_position: Point,
 		viewport: &Rectangle,
 	) -> (Primitive, mouse::Interaction) {
-		let (x_range, y_range)  = &self.internet.router.field_dimensions;
+		let (x_range, y_range) = &self.internet.router.field_dimensions;
 		let x_scale = viewport.width / (x_range.end - x_range.start) as f32;
 		let y_scale = viewport.height / (y_range.end - y_range.start) as f32;
 
@@ -71,20 +72,23 @@ where
 				Primitive::Group {
 					primitives: vec![
 						Primitive::Quad {
-							bounds: Rectangle::new(Point::new(x, y), Size::new(20.0, 20.0)),
-							background: Background::Color(Color::from_rgb(1.0, 0.0, 0.0)),
-							border_radius: 10.0,
+							bounds: Rectangle::new(
+								Point::new(x - 20.0, y - 20.0),
+								Size::new(40.0, 40.0),
+							),
+							background: Background::Color(Color::from_rgb(0.0, 0.0, 0.0)),
+							border_radius: 20.0,
 							border_width: 0.0,
 							border_color: Color::from_rgb(0.0, 1.0, 0.0),
 						},
 						Primitive::Text {
 							content: id.to_string(),
 							/// The bounds of the text
-							bounds: Rectangle::new(Point::new(x,y), Size::new(40.,20.)),
+							bounds: Rectangle::new(Point::new(x, y), Size::new(60., 30.)),
 							/// The color of the text
-							color: Color::from_rgb(0.0, 0.0, 1.0),
+							color: Color::from_rgb(1.0, 1.0, 1.0),
 							/// The size of the text
-							size: 10.0,
+							size: 30.0,
 							/// The font of the text
 							font: Font::Default,
 							/// The horizontal alignment of the text
@@ -94,7 +98,6 @@ where
 						},
 					],
 				}
-				
 			})
 			.collect();
 		(

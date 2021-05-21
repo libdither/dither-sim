@@ -1377,23 +1377,13 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.4.0"
-source = "git+https://github.com/zyansheep/iced#c2a91d9cf3a29f755718c1011524370685872884"
-
-[[package]]
-name = "iced_core"
-version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fafe4a5eeee85876f3bad347338456e0f3e7fcdc2381a5ce6c3ba2a60dd769bf"
 
 [[package]]
-name = "iced_futures"
-version = "0.3.0"
+name = "iced_core"
+version = "0.4.0"
 source = "git+https://github.com/zyansheep/iced#c2a91d9cf3a29f755718c1011524370685872884"
-dependencies = [
- "futures",
- "log",
- "wasm-bindgen-futures",
-]
 
 [[package]]
 name = "iced_futures"
@@ -1407,17 +1397,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "iced_graphics"
-version = "0.2.0"
+name = "iced_futures"
+version = "0.3.0"
 source = "git+https://github.com/zyansheep/iced#c2a91d9cf3a29f755718c1011524370685872884"
 dependencies = [
- "bytemuck",
- "font-kit",
- "glam",
- "iced_native 0.4.0 (git+https://github.com/zyansheep/iced)",
- "iced_style 0.3.0 (git+https://github.com/zyansheep/iced)",
- "raw-window-handle",
- "thiserror",
+ "futures",
+ "log",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -1430,6 +1416,20 @@ dependencies = [
  "glam",
  "iced_native 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "iced_style 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "raw-window-handle",
+ "thiserror",
+]
+
+[[package]]
+name = "iced_graphics"
+version = "0.2.0"
+source = "git+https://github.com/zyansheep/iced#c2a91d9cf3a29f755718c1011524370685872884"
+dependencies = [
+ "bytemuck",
+ "font-kit",
+ "glam",
+ "iced_native 0.4.0 (git+https://github.com/zyansheep/iced)",
+ "iced_style 0.3.0 (git+https://github.com/zyansheep/iced)",
  "raw-window-handle",
  "thiserror",
 ]
@@ -1450,18 +1450,6 @@ dependencies = [
 [[package]]
 name = "iced_native"
 version = "0.4.0"
-source = "git+https://github.com/zyansheep/iced#c2a91d9cf3a29f755718c1011524370685872884"
-dependencies = [
- "iced_core 0.4.0 (git+https://github.com/zyansheep/iced)",
- "iced_futures 0.3.0 (git+https://github.com/zyansheep/iced)",
- "num-traits",
- "twox-hash",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "iced_native"
-version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "35030736d160e88b79edddee7ab664a2f3ac6b4046608e298b4c853030e3cc06"
 dependencies = [
@@ -1473,11 +1461,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "iced_style"
-version = "0.3.0"
+name = "iced_native"
+version = "0.4.0"
 source = "git+https://github.com/zyansheep/iced#c2a91d9cf3a29f755718c1011524370685872884"
 dependencies = [
  "iced_core 0.4.0 (git+https://github.com/zyansheep/iced)",
+ "iced_futures 0.3.0 (git+https://github.com/zyansheep/iced)",
+ "num-traits",
+ "twox-hash",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -1490,19 +1482,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "iced_web"
-version = "0.4.0"
+name = "iced_style"
+version = "0.3.0"
 source = "git+https://github.com/zyansheep/iced#c2a91d9cf3a29f755718c1011524370685872884"
 dependencies = [
- "dodrio",
  "iced_core 0.4.0 (git+https://github.com/zyansheep/iced)",
- "iced_futures 0.3.0 (git+https://github.com/zyansheep/iced)",
- "iced_style 0.3.0 (git+https://github.com/zyansheep/iced)",
- "num-traits",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
@@ -1515,6 +1499,22 @@ dependencies = [
  "iced_core 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "iced_futures 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "iced_style 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "num-traits",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "iced_web"
+version = "0.4.0"
+source = "git+https://github.com/zyansheep/iced#c2a91d9cf3a29f755718c1011524370685872884"
+dependencies = [
+ "dodrio",
+ "iced_core 0.4.0 (git+https://github.com/zyansheep/iced)",
+ "iced_futures 0.3.0 (git+https://github.com/zyansheep/iced)",
+ "iced_style 0.3.0 (git+https://github.com/zyansheep/iced)",
  "num-traits",
  "url",
  "wasm-bindgen",

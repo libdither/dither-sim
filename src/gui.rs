@@ -34,7 +34,7 @@ impl Application for NetSimApp {
 	}
 
 	fn title(&self) -> String {
-		String::from("Custom widget - Iced")
+		String::from("Dither Network Simulation")
 	}
 
 	fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
@@ -48,9 +48,9 @@ impl Application for NetSimApp {
 
 	fn view(&mut self) -> Element<Message> {
 		let content = Column::new()
-			.padding(20)
-			.spacing(20)
-			.max_width(500)
+			.padding(0)
+			.spacing(0)
+			.max_width(2000)
 			.align_items(Align::Center)
 			.push(Graph::new(&self.internet))
 			/* .push(Text::new(format!("Radius: {:.2}", self.radius)))
@@ -70,5 +70,9 @@ impl Application for NetSimApp {
 			.center_x()
 			.center_y()
 			.into()
+	}
+	fn scale_factor(&self) -> f64 {
+		println!("Setting Scale Factor");
+		1.0
 	}
 }
