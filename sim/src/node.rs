@@ -1124,7 +1124,7 @@ impl Node {
 		println!("Proximity Matrix: {}", proximity_matrix);
 		// Algorithm for Multidimensional Scaling (MDS) Adapted from: http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.495.4629&rep=rep1&type=pdf
 		let proximity_squared = proximity_matrix.component_mul(&proximity_matrix);
-
+		
 		let j_matrix = DMatrix::from_diagonal_element(mat_size, mat_size, 1.) - DMatrix::from_element(mat_size, mat_size, 1./mat_size as f64);
 
 		let b_matrix = -0.5 * j_matrix.clone() * proximity_squared * j_matrix;

@@ -1,19 +1,19 @@
 
 use crate::graph::Graph;
 pub use iced::Settings;
-use iced::{Align, Application, Clipboard, Column, Command, Container, Element, Length, Slider, Text, executor, slider};
+use iced::{Align, Application, Clipboard, Column, Command, Container, Element, Length, executor};
 
 use sim::{internet::NetSim, node::Node};
 
 pub struct NetSimApp {
 	internet: NetSim<Node>,
-	radius: f32,
-	slider: slider::State,
+	//radius: f32,
+	//slider: slider::State,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Message {
-	RadiusChanged(f32),
+	//RadiusChanged(f32),
 }
 
 pub struct NetSimAppSettings {
@@ -28,8 +28,8 @@ impl Application for NetSimApp {
 	fn new(flags: NetSimAppSettings) -> (Self, Command<Self::Message>) {
 		(NetSimApp {
 			internet: flags.net_sim,
-			radius: 50.0,
-			slider: slider::State::new(),
+			//radius: 50.0,
+			//slider: slider::State::new(),
 		}, Command::none())
 	}
 
@@ -37,12 +37,13 @@ impl Application for NetSimApp {
 		String::from("Dither Network Simulation")
 	}
 
-	fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
-		match message {
-			Message::RadiusChanged(radius) => {
+	fn update(&mut self, _message: Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
+		/* match message {
+			/* Message::RadiusChanged(radius) => {
 				self.radius = radius;
-			}
-		}
+			} */
+			_ => {},
+		} */
 		Command::none()
 	}
 
