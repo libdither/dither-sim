@@ -47,7 +47,7 @@
 
 		# `nix develop`
 		devShell = pkgs.mkShell {
-			buildInputs = packages.dbr-sim.buildInputs ++ [ pkgs.llvmPackages_12.lldClang.bintools ];
+			buildInputs = packages.dbr-sim.buildInputs ++ [ pkgs.lld ];
 			LD_LIBRARY_PATH = "${nixpkgs.lib.makeLibraryPath packages.dbr-sim.buildInputs}";
 			hardeningDisable = [ "fortify" ];
 			NIX_CFLAGS_LINK = "-fuse-ld=lld";
