@@ -15,7 +15,10 @@ anyhow = "1.0.41"
 iced = { git = "https://github.com/zyansheep/iced" }
 iced_native = { git = "https://github.com/zyansheep/iced" }
 iced_graphics = { git = "https://github.com/zyansheep/iced" }
-iced_aw = { git = "https://github.com/iced-rs/iced_aw", default-features = false, features = ["tab_bar", "tabs"] }
+#iced = { git = "https://github.com/hecrj/iced", branch = "feature/dynamic-linking", package="iced_dynamic" }
+#iced_native = { git = "https://github.com/hecrj/iced", branch = "feature/dynamic-linking", package="iced_dynamic" }
+#iced_graphics = { git = "https://github.com/hecrj/iced", branch = "feature/dynamic-linking", package="iced_dynamic" }
+#iced_aw = { git = "https://github.com/iced-rs/iced_aw", default-features = false, features = ["tab_bar", "tabs"] }
 env_logger = "0.8.4"
 rand = "0.8.4"
 nalgebra = "0.27.1"

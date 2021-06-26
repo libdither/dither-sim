@@ -25,16 +25,18 @@
 				cmake
 				pkgconfig
 				fontconfig
+				freetype
+				stdenv.cc.cc.lib
 				
 				x11
 				xorg.libXcursor
 				xorg.libXrandr
 				xorg.libXi
+				libxkbcommon
 				vulkan-tools
 				vulkan-headers
 				vulkan-loader
 				vulkan-validation-layers
-				freetype
 			];
 		};
 		defaultPackage = packages.dbr-sim;

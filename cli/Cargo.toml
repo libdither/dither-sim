@@ -7,10 +7,10 @@ edition = "2018"
 
 [dependencies]
 sim = { path = "../sim", features = ["plot"] }
-anyhow = "1.0.40"
-env_logger = "*"
-rand = "*"
-fancy-regex = "0.5.0"
+anyhow = "1.0.41"
+env_logger = "0.8.4"
+rand = "0.8.4"
+fancy-regex = "0.6.0"
 csv = "1.1.6"
 permutation_iterator = "0.1.2"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0.126", features = ["derive"] }
