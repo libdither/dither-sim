@@ -5,8 +5,8 @@ use iced::{Application, Settings};
 use rand::{rngs::SmallRng, SeedableRng};
 
 use crate::gui::{NetSimApp, NetSimAppSettings};
-mod graph;
 mod gui;
+mod tabs;
 
 fn main() -> anyhow::Result<()> {
 	env_logger::init();

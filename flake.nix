@@ -24,8 +24,6 @@
 			buildInputs = with pkgs; [
 				cmake
 				pkgconfig
-				fontconfig
-				freetype
 				stdenv.cc.cc.lib
 				
 				x11
@@ -37,6 +35,8 @@
 				vulkan-headers
 				vulkan-loader
 				vulkan-validation-layers
+				fontconfig
+				freetype
 			];
 		};
 		defaultPackage = packages.dbr-sim;

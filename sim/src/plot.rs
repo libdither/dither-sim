@@ -98,7 +98,7 @@ impl GraphPlottable for NetSim<Node> {
 			Element::Node {
 				weight: (
 					net_addr.to_string(),
-					lc.position.map(|i|i as i32),
+					Point2::from(lc.position.map(|i|i as i32)),
 				)
 			}
 		}).collect();

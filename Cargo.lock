@@ -628,6 +628,7 @@ dependencies = [
  "anyhow",
  "env_logger",
  "iced",
+ "iced_aw",
  "iced_graphics",
  "iced_native",
  "nalgebra",
@@ -1041,7 +1042,7 @@ checksum = "7fcd999463524c52659517fe2cea98493cfe485d10565e7b0fb07dbba7ad2753"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
- "wasi 0.10.2+wasi-snapshot-preview1",
+ "wasi 0.10.0+wasi-snapshot-preview1",
 ]
 
 [[package]]
@@ -1347,13 +1348,55 @@ name = "iced"
 version = "0.3.0"
 source = "git+https://github.com/zyansheep/iced#aa5a84fc56945e03262af9d228a305d91d26bd3a"
 dependencies = [
+ "iced_dynamic",
  "iced_internal",
+]
+
+[[package]]
+name = "iced_aw"
+version = "0.1.0"
+source = "git+https://github.com/zyansheep/iced_aw#82bd6ca3219368b75d6e612bc3d689d948995c53"
+dependencies = [
+ "chrono",
+ "dodrio",
+ "iced_graphics",
+ "iced_native",
+ "iced_style 0.3.0 (git+https://github.com/zyansheep/iced)",
+ "iced_web 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
 name = "iced_core"
 version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fafe4a5eeee85876f3bad347338456e0f3e7fcdc2381a5ce6c3ba2a60dd769bf"
+
+[[package]]
+name = "iced_core"
+version = "0.4.0"
 source = "git+https://github.com/zyansheep/iced#aa5a84fc56945e03262af9d228a305d91d26bd3a"
+
+[[package]]
+name = "iced_dynamic"
+version = "0.3.0"
+source = "git+https://github.com/zyansheep/iced#aa5a84fc56945e03262af9d228a305d91d26bd3a"
+dependencies = [
+ "iced_internal",
+]
+
+[[package]]
+name = "iced_futures"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a89fdde2cb9c5807d23f40230297122e480428c660ad7d0373e625cd0725afa1"
+dependencies = [
+ "futures",
+ "log",
+ "wasm-bindgen-futures",
+]
 
 [[package]]
 name = "iced_futures"
@@ -1374,7 +1417,8 @@ dependencies = [
  "font-kit",
  "glam",
  "iced_native",
- "iced_style",
+ "iced_style 0.3.0 (git+https://github.com/zyansheep/iced)",
+ "lyon",
  "raw-window-handle",
  "thiserror",
 ]
@@ -1384,9 +1428,9 @@ name = "iced_internal"
 version = "0.3.0"
 source = "git+https://github.com/zyansheep/iced#aa5a84fc56945e03262af9d228a305d91d26bd3a"
 dependencies = [
- "iced_core",
- "iced_futures",
- "iced_web",
+ "iced_core 0.4.0 (git+https://github.com/zyansheep/iced)",
+ "iced_futures 0.3.0 (git+https://github.com/zyansheep/iced)",
+ "iced_web 0.4.0 (git+https://github.com/zyansheep/iced)",
  "iced_wgpu",
  "iced_winit",
  "thiserror",
@@ -1397,8 +1441,8 @@ name = "iced_native"
 version = "0.4.0"
 source = "git+https://github.com/zyansheep/iced#aa5a84fc56945e03262af9d228a305d91d26bd3a"
 dependencies = [
- "iced_core",
- "iced_futures",
+ "iced_core 0.4.0 (git+https://github.com/zyansheep/iced)",
+ "iced_futures 0.3.0 (git+https://github.com/zyansheep/iced)",
  "num-traits",
  "twox-hash",
  "unicode-segmentation",
@@ -1407,9 +1451,35 @@ dependencies = [
 [[package]]
 name = "iced_style"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca93066a80759bfb31f2900d45ca4cf7500b88611607da5e380143badfcd7837"
+dependencies = [
+ "iced_core 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "iced_style"
+version = "0.3.0"
 source = "git+https://github.com/zyansheep/iced#aa5a84fc56945e03262af9d228a305d91d26bd3a"
 dependencies = [
- "iced_core",
+ "iced_core 0.4.0 (git+https://github.com/zyansheep/iced)",
+]
+
+[[package]]
+name = "iced_web"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c57300b109735abcee7aed27101eb1b29016ba07ec50b6944530982231397ad"
+dependencies = [
+ "dodrio",
+ "iced_core 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "iced_futures 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "iced_style 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "num-traits",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -1418,9 +1488,9 @@ version = "0.4.0"
 source = "git+https://github.com/zyansheep/iced#aa5a84fc56945e03262af9d228a305d91d26bd3a"
 dependencies = [
  "dodrio",
- "iced_core",
- "iced_futures",
- "iced_style",
+ "iced_core 0.4.0 (git+https://github.com/zyansheep/iced)",
+ "iced_futures 0.3.0 (git+https://github.com/zyansheep/iced)",
+ "iced_style 0.3.0 (git+https://github.com/zyansheep/iced)",
  "num-traits",
  "url",
  "wasm-bindgen",
@@ -1450,7 +1520,7 @@ name = "iced_winit"
 version = "0.3.0"
 source = "git+https://github.com/zyansheep/iced#aa5a84fc56945e03262af9d228a305d91d26bd3a"
 dependencies = [
- "iced_futures",
+ "iced_futures 0.3.0 (git+https://github.com/zyansheep/iced)",
  "iced_graphics",
  "iced_native",
  "log",
@@ -1659,6 +1729,57 @@ name = "longest-increasing-subsequence"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3bd0dd2cd90571056fdb71f6275fada10131182f84899f4b2a916e565d81d86"
+
+[[package]]
+name = "lyon"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28d083e12e9e22298eec27751ec4a0975abac5873a3b0dcdbbecc608d333f0e9"
+dependencies = [
+ "lyon_algorithms",
+ "lyon_tessellation",
+]
+
+[[package]]
+name = "lyon_algorithms"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11033936a5e9d7bf35b7ba71a19f8b6bc838f3206304175dc5b3524ca16672a8"
+dependencies = [
+ "lyon_path",
+ "sid",
+]
+
+[[package]]
+name = "lyon_geom"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ce4e12203c428a58200b8cf1c0a3aad1cda907008ea11310bb3729593e5f933"
+dependencies = [
+ "arrayvec 0.5.2",
+ "euclid",
+ "num-traits",
+]
+
+[[package]]
+name = "lyon_path"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "243c71fff16677ecde2d38794a0253a8f0417cebaacc6390677c30733831d8cb"
+dependencies = [
+ "lyon_geom",
+]
+
+[[package]]
+name = "lyon_tessellation"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ecf3d769bec66396957d7c5cb91f998c4182e53fdc96cc435b6ebcd46a63cd9"
+dependencies = [
+ "arrayvec 0.5.2",
+ "lyon_path",
+ "sid",
+]
 
 [[package]]
 name = "malloc_buf"
@@ -2111,7 +2232,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a3c7a20e3f122223e68eef6ca58e39bc1ea8a1d83418ba4c2c1ba189d2ee355"
 dependencies = [
- "ttf-parser 0.12.2",
+ "ttf-parser 0.12.3",
 ]
 
 [[package]]
@@ -2629,6 +2750,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sid"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd5ac56c121948b4879bba9e519852c211bcdd8f014efff766441deff0b91bdb"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "sim"
 version = "0.1.0"
 dependencies = [
@@ -2857,11 +2987,12 @@ checksum = "7572415bd688d401c52f6e36f4c8e805b9ae1622619303b9fa835d531db0acae"
 
 [[package]]
 name = "time"
-version = "0.1.43"
+version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca8a50ef2360fbd1eeb0ecd46795a87a19024eb4b53c5dc916ca1fd95fe62438"
+checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
 dependencies = [
  "libc",
+ "wasi 0.10.0+wasi-snapshot-preview1",
  "winapi 0.3.9",
 ]
 
@@ -2935,9 +3066,9 @@ checksum = "7622061403fd00f0820df288e5a580e87d3ce15a1c4313c59fd1ffb77129903f"
 
 [[package]]
 name = "ttf-parser"
-version = "0.12.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c56097738aec26a3f347edf99f5c84d9d4e3a4b8ce5513ebca85cb621fc7c50"
+checksum = "7ae2f58a822f08abdaf668897e96a5656fe72f5a9ce66422423e8849384872e6"
 
 [[package]]
 name = "twox-hash"
@@ -3038,9 +3169,9 @@ checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
 
 [[package]]
 name = "wasi"
-version = "0.10.2+wasi-snapshot-preview1"
+version = "0.10.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6fbd9a79829dd1ad0cc20627bf1ed606756a7f77edff7b66b7064f9cb327c6"
+checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
 
 [[package]]
 name = "wasm-bindgen"

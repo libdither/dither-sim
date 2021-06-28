@@ -1,20 +1,6 @@
-//! This example showcases a simple native custom widget that draws a circle.
 use iced::{Font, HorizontalAlignment, VerticalAlignment};
-// For now, to implement a custom native widget you will need to add
-// `iced_native` and `iced_wgpu` to your dependencies.
-//
-// Then, you simply need to define your widget type and implement the
-// `iced_native::Widget` trait with the `iced_wgpu::Renderer`.
-//
-// Of course, you can choose to make the implementation renderer-agnostic,
-// if you wish to, by creating your own `Renderer` trait, which could be
-// implemented by `iced_wgpu` and other renderers.
-use iced_graphics::{Backend, Defaults, Primitive, Renderer};
-use iced_native::{
-	layout, mouse, Background, Color, Element, Hasher, Layout, Length, Point, Rectangle, Size,
-	Widget,
-};
-use nalgebra::Point2;
+
+use nalgebra::Vector2;
 use sim::{NetSim, Node};
 
 pub struct Graph<'a> {
@@ -66,7 +52,7 @@ where
 			.node_map
 			.iter()
 			.map(|(id, node)| {
-				let point = node.position - Point2::new(x_range.start as f32, y_range.start as f32);
+				let point = node.position - Vector2::new(x_range.start as f32, y_range.start as f32);
 				let (x, y) = (point.x * x_scale, point.y * y_scale);
 				Primitive::Group {
 					primitives: vec![

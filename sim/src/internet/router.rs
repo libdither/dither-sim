@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 const VARIANCE: isize = 2;
-use nalgebra::Point2;
+use nalgebra::Vector2;
 use rand::Rng;
 
 use super::{CustomNode, NetAddr, NetSimPacket, NetSimPacketVec};
@@ -17,7 +17,7 @@ pub trait LatencyCalculator: Default {
 pub struct RouterNode {
 	pub uuid: NetAddr,
 	pub variance: isize,
-	pub position: Point2<f32>,
+	pub position: Vector2<f32>,
 	pub distance_cache: HashMap<NetAddr, isize>,
 }
 impl RouterNode {
@@ -26,12 +26,12 @@ impl RouterNode {
 		Self {
 			uuid,
 			variance: VARIANCE,
-			position: Point2::new(rng.gen_range(range.0.clone()), rng.gen_range(range.1.clone())).map(|d|d as f32),
+			position: Vector2::new(rng.gen_range(range.0.clone()), rng.gen_range(range.1.clone())).map(|d|d as f32),
 			distance_cache: HashMap::new(),
 		}
 	}
-	fn generate(&mut self, other_uuid: NetAddr, other_position: Point2<f32>, rng: &mut impl Rng) -> isize {
-		let dist = *self.distance_cache.entry(other_uuid).or_insert(nalgebra::distance(&self.position, &other_position) as isize);
+	fn generate(&mut self, other_uuid: NetAddr, other_position: Vector2<f32>, rng: &mut impl Rng) -> isize {
+		let dist = *self.distance_cache.entry(other_uuid).or_insert(self.position.metric_distance(&other_position) as isize);
 		dist as isize + rng.gen_range(-self.variance..self.variance)
 	}
 }

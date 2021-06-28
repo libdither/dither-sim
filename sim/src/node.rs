@@ -13,6 +13,7 @@ mod remote;
 mod session;
 pub mod types;
 
+use nalgebra::{Point, Vector2};
 pub use packet::{NodeEncryption, NodePacket, TraversedPacket};
 use remote::{RemoteNode, RemoteNodeError};
 use session::{RemoteSession, SessionError, SessionType};
@@ -673,7 +674,7 @@ impl Node {
 						return Ok(());
 					}
 				} // Nodes should not be spamming this multiple times
-  // Loop through first min(N,MAX_REQUEST_PINGS) items of priorityqueue
+				// Loop through first min(N,MAX_REQUEST_PINGS) items of priorityqueue
 				let num_requests = usize::min(requests, MAX_REQUEST_PINGS); // Maximum of 10 requests
 
 				// TODO: Use vpsearch Tree datastructure for optimal efficiency
@@ -685,22 +686,11 @@ impl Node {
 						.direct_sorted
 						.iter()
 						.filter_map(|(&_, &node_idx)| {
-							self.remote(node_idx)
-								.ok()
-								.map(|remote| {
-									if let Some(p) = remote.route_coord {
-										Some((
-											node_idx,
-											nalgebra::distance_squared(
-												&p.map(|s| s as f64),
-												&point_target,
-											) as u64,
-										))
-									} else {
-										None
-									}
-								})
-								.flatten()
+							self.remote(node_idx).ok().map(|remote| {
+								if let Some(p) = remote.route_coord {
+									Some((node_idx, nalgebra::distance_squared(&p.map(|s| s as f64), &point_target) as u64))
+								} else { None }
+							}).flatten()
 						})
 						.collect::<Vec<(NodeIdx, u64)>>();
 					sorted.sort_unstable_by_key(|k| k.1);
@@ -1069,113 +1059,59 @@ impl Node {
 		Ok(())
 	}
 	fn calculate_route_coord(&mut self) -> Result<RouteCoord, NodeError> {
-		let route_coord = self
-			.deus_ex_data
-			.ok_or(NodeError::Other(anyhow!("no deus ex machina data")))?;
-		log::debug!(
-			"NodeID({}) Calculated RouteCoord({})",
-			self.node_id,
-			route_coord
-		);
-		return Ok(route_coord);
-
-		/* use nalgebra::{DMatrix, SymmetricEigen};
-		// TODO: Fix matrix output rotation & translation
-		// println!("node_list: {:?}", self.remotes.iter().map(|(&id,n)|(id,n.route_coord)).collect::<Vec<(NodeID,Option<RouteCoord>)>>() );
-		/* let nodes: Vec<(NodeIdx, RouteCoord)> = self.direct_sorted.iter().filter_map(|(_,&node_idx)|self.remote(node_idx).ok().map(|node|node.route_coord.map(|s|(node_idx,s))).flatten()).collect(); */
-
-		// Get index list of all peered remotes
-		let remote_idxs = self.peer_list.iter().map(|(idx,_)| *idx).collect::<Vec<NodeIdx>>();
-		let mat_size = remote_idxs.len() + 1;
-
-		/* println!("filtered_node_list: {:?}", nodes); */
-		let mut proximity_matrix = DMatrix::from_element(mat_size, mat_size, 0f64);
-
-
-		// This is inefficient b.c. multiple vector creation but whatever
-		/* let node_id_index: Vec<NodeIdx> = self.route_map.edges(self.node_id).filter_map(|(_,n,&e)|{
-			(e != 0 && n != self.node_id).then(||(self.index_by_node_id(&n).unwrap()))
-		}).unzip(); */
-
-
-		/* let mut first_row_insert = self.peer_list.iter().map(|(a, _)|*a).collect();
-		first_row_insert.insert(0, 0); */
-
-		/* println!("first_row_insert: {:?}", first_row_insert);
-		println!("node: {:?}", self);
-		println!("route_map: {:#?}", self.route_map); */
-		// Fill first row and collumn
-		first_row_insert.iter().enumerate().for_each(|(i,&w)| {
-			proximity_matrix[(0,i)] = w as f64;
-			proximity_matrix[(i,0)] = w as f64;
-		});
-
-		node_id_index.iter().enumerate().for_each(|(i_row, idx_row)|{
-			node_id_index.iter().enumerate().for_each(|(i_col, idx_col)|{
-				let coord_row = self.remote(*idx_row).unwrap().route_coord.unwrap();
-				let coord_col = self.remote(*idx_col).unwrap().route_coord.unwrap();
-				/* let dist_vec = Vector2::new(coord_x.0 as f64, coord_x.1 as f64) - Vector2::new(coord_y.0 as f64,coord_y.1 as f64);
-				let dist = dist_vec.norm(); */
-				let dist = types::route_dist(&coord_row, &coord_col);
-				proximity_matrix[(i_row+1, i_col+1)] = dist;
-				proximity_matrix[(i_col+1, i_row+1)] = dist;
-			});
-		});
-		println!("Proximity Matrix: {}", proximity_matrix);
-		// Algorithm for Multidimensional Scaling (MDS) Adapted from: http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.495.4629&rep=rep1&type=pdf
-		let proximity_squared = proximity_matrix.component_mul(&proximity_matrix);
-		
-		let j_matrix = DMatrix::from_diagonal_element(mat_size, mat_size, 1.) - DMatrix::from_element(mat_size, mat_size, 1./mat_size as f64);
-
-		let b_matrix = -0.5 * j_matrix.clone() * proximity_squared * j_matrix;
-
-		// Calculate Eigenvectors and Eigenvalues and choose the 2 biggest ones
-		let eigen = SymmetricEigen::try_new(b_matrix.clone(), 0., 0).unwrap();
-		let eigenvalues: Vec<f64> = eigen.eigenvalues.data.as_vec().clone();
-		let max_eigenvalue = eigenvalues.iter().enumerate().max_by(|(_,&ev1),(_,ev2)|ev1.partial_cmp(ev2).unwrap()).unwrap();
-		let second_max_eigenvalue = eigenvalues.iter().enumerate().filter(|(i,_)|*i!=max_eigenvalue.0).max_by(|(_,&ev1),(_,ev2)|ev1.partial_cmp(ev2).unwrap()).unwrap();
-
-		let top_eigenvalues = nalgebra::Matrix2::new(max_eigenvalue.1.abs().sqrt(), 0., 0., second_max_eigenvalue.1.abs().sqrt()); // Eigenvalue matrix
-		let top_eigenvectors = DMatrix::from_fn(mat_size, 2, |r,c| if c==0 { eigen.eigenvectors[(r,max_eigenvalue.0)] } else { eigen.eigenvectors[(r,second_max_eigenvalue.0)] });
-		let mut x_matrix = top_eigenvectors.clone() * top_eigenvalues; // Output, index 0 needs to be mapped to virtual routecoord coordinates based on other indices
-		log::trace!("NodeID({}) x_matrix prediction = {}", self.node_id, x_matrix);
-		/* if mat_size == 3 {
-			x_matrix.row_iter_mut().for_each(|mut r|r[1] = -r[1]);
+		// TODO: THIS CODE IS TERRIBLE AND NOT FUTURE-PROOF, NEEDS REIMPLEMENTATION FOR 3 DIMENSIONS AND FIX PRECISION ISSUES
+		struct NodeCircle {
+			coord: Vector2<f64>,
+			dist: f64,
+			list_index: usize,
 		}
-		log::trace!("NodeID({}) x_matrix prediction flip = {}", self.node_id, x_matrix); */
 
-		// Map MDS output to 2 RouteCoordinates
-		// TODO: Refactor this messy code
-		let v1_routecoord = self.remote(self.index_by_node_id(&node_id_index[0])?)?.route_coord.unwrap();
-		let v1 = v1_routecoord.coords.map(|s|s as f64);
-		let v2_routecoord = self.remote(self.index_by_node_id(&node_id_index[1])?)?.route_coord.unwrap();
-		let v2 = v2_routecoord.coords.map(|s|s as f64);
-		use nalgebra::{U2, U1};
-		let x1 = x_matrix.row(1).clone_owned().reshape_generic(U2,U1);
-		//println!("x1: {}", x1);
-		//println!("v1: {}, v2: {}", v1, v2);
-		let x_shift = v1 - x1;
-		println!("x_shift: {}", x_shift);
-		let x1s = x1 + x_shift;
-		let x2s = x_matrix.row(2).clone_owned().reshape_generic(U2,U1) + x_shift;
-		let x3s = x_matrix.row(0).clone_owned().reshape_generic(U2,U1) + x_shift;
-		//println!("x1s: {}, x2s: {}, x3s: {}", x1s, x2s, x3s);
+		// Get 10 closest nodes
+		use itertools::Itertools;
+		let closest_nodes = self.direct_sorted.iter().enumerate().filter_map(|(idx, (_,node_idx))| {
+			let result: anyhow::Result<NodeCircle> = try {
+				let node = self.remote(*node_idx)?;
+				NodeCircle {
+					coord: node.route_coord.ok_or(NodeError::NoCalculatedRouteCoord)?.map(|s|s as f64).coords,
+					dist: node.session()?.tracker.dist_avg as f64,
+					list_index: idx,
+				}
+			};
+			result.ok()
+		}).take(10).collect::<Vec<NodeCircle>>();
 
-		let xd = x1s - x2s;
-		let vd = v1 - v2;
-		let cos_a = (vd[1] + vd[0]) / (2. * xd[0]);
-		let sin_a = (vd[1] - vd[0]) / (2. * xd[1]);
-		//println!("cos_a: {}, sin_a: {}", cos_a, sin_a);
-		let a = f64::atan2(sin_a, cos_a);
-		log::debug!("a = {}", a.to_degrees());
+		let points = closest_nodes.iter().tuple_combinations().filter_map(|(node_a, node_b)| {
+			let result: anyhow::Result<Vector2<f64>> = try {
+				// Algorithm from: https://www.desmos.com/calculator/9mkzwevrns and https://math.stackexchange.com/questions/256100/how-can-i-find-the-points-at-which-two-circles-intersect
+				let dist = node_a.coord.metric_distance(&node_b.coord);
+				//let dist = nalgebra::distance(&node_a.coord, &circle_b.coord); // Distance
+				let rad_a_sq = (node_a.dist * node_a.dist) as f64; // Radius of Circle A Squared
+				let rad_b_sq = (node_b.dist * node_b.dist) as f64; // Radius of Circle B SQuared
+				let dist_sq = dist * dist;
 
-		use nalgebra::Matrix2;
-		let rot = Matrix2::new(a.cos(), -a.sin(), a.sin(), a.cos());
-		println!("matrix layout: {}", Matrix2::new(0,1,2,3));
-		let v3_g = rot * x3s;
+				let a = (rad_a_sq - rad_b_sq) / (2.0 * dist_sq);
+				let middle = (node_a.coord + node_b.coord) / 2.0  + a * (node_b.coord - node_a.coord);
 
-		log::info!("RouteCoord generated: {}", v3_g);
-		Ok(Point2::new(v3_g[0] as i64, v3_g[1] as i64)) */
+				let c = f64::sqrt( (2.0 * (rad_a_sq + rad_b_sq) / dist_sq) - ((rad_a_sq - rad_b_sq).powi(2) / (dist_sq * dist_sq) ) - 1.0);
+				let offset = c * Vector2::new(node_a.coord.y + node_b.coord.y, node_a.coord.x - node_b.coord.x,) / 2.0;
+
+				let intersection_1 = middle + offset;
+				let intersection_2 = middle - offset;
+
+				let intersection_points = closest_nodes.iter().filter(|&node|node.list_index != node_a.list_index || node.list_index != node_b.list_index)
+					.map(|s|{
+						let dist_intersect_1 = (intersection_1 - s.coord).magnitude() - s.dist;
+						let dist_intersect_2 = (intersection_2 - s.coord).magnitude() - s.dist;
+						if dist_intersect_1 < dist_intersect_2 { intersection_1 } else { intersection_2 }
+					}).collect::<Vec<Vector2<f64>>>();
+				// Calculate Average
+				intersection_points.iter().fold(Vector2::new(0.0,0.0), |acc, &x| acc + x) / intersection_points.len() as f64
+			};
+			result.ok()
+		}).collect::<Vec<Vector2<f64>>>();
+		let average_point = points.iter().fold(Vector2::new(0.0,0.0), |acc, &x| acc + x) / points.len() as f64;
+		let average_point = average_point.map(|s|s as i64);
+		Ok(Point::from(average_point))
 	}
 }
 

@@ -122,9 +122,9 @@ impl<CN: CustomNode> NetSim<CN> {
 				}
 				// Send packets through the router
 				self.router.add_packets(outgoing_packets, rng);
-				if let Some(rn) = self.router.node_map.get(&node_net_addr) {
+				/* if let Some(rn) = self.router.node_map.get(&node_net_addr) {
 					let cheat_coord = rn.position.clone().map(|s|s.floor() as i64);
-					node.set_deus_ex_data( Some(cheat_coord) ) }
+					node.set_deus_ex_data( Some(cheat_coord) ) } */
 			}
 		}
 	}
