@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate derivative;
+
 use std::{fs, io::BufReader};
 
 use sim::{DEFAULT_CACHE_FILE, NetSim, Node};

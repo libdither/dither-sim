@@ -1,7 +1,7 @@
 
 // use crate::graph::Graph;
 pub use iced::Settings;
-use iced::{Align, Application, Clipboard, Column, Command, Container, Element, Length, executor};
+use iced::{Application, Clipboard, Command, Element, executor};
 use crate::tabs::{self, TabBar};
 
 use sim::{internet::NetSim, node::Node};

@@ -626,11 +626,10 @@ name = "dbr-sim"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "derivative",
  "env_logger",
  "iced",
  "iced_aw",
- "iced_graphics",
- "iced_native",
  "nalgebra",
  "rand 0.8.4",
  "sim",

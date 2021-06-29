@@ -1,70 +1,267 @@
-use super::{Icon, Message, Tab};
-use iced::{button, Align, Button, Column, Container, Element, Row, Text};
+use super::{Icon, Tab};
+use iced::{button, Align, Button, Column, Container, Element, Length, Row, Text};
 use iced_aw::TabLabel;
+
+use network_map::NetworkMap;
+
 #[derive(Debug, Clone)]
-pub enum CounterMessage {
-    Increase,
-    Decrease,
+pub enum Message {
+	NetMap(network_map::Message),
 }
 
-pub struct CounterTab {
-    value: i32,
-    increase_button: button::State,
-    decrease_button: button::State,
+pub struct NetworkTab {
+	map: NetworkMap,
 }
 
-impl CounterTab {
-    pub fn new() -> Self {
-        CounterTab {
-            value: 0,
-            increase_button: button::State::default(),
-            decrease_button: button::State::default(),
-        }
-    }
+impl NetworkTab {
+	pub fn new() -> Self {
+		Self {
+			map: NetworkMap::test_conf(),
+		}
+	}
 
-    pub fn update(&mut self, message: CounterMessage) {
-        match message {
-            CounterMessage::Increase => self.value += 1,
-            CounterMessage::Decrease => self.value -= 1,
-        }
-    }
+	pub fn update(&mut self, message: Message) {
+		/* match message {
+			CounterMessage::Increase => self.value += 1,
+			CounterMessage::Decrease => self.value -= 1,
+		} */
+	}
 }
 
-impl Tab for CounterTab {
-    type Message = Message;
+impl Tab for NetworkTab {
+	type Message = Message;
 
-    fn title(&self) -> String {
-        String::from("Counter")
-    }
+	fn title(&self) -> String {
+		String::from("Counter")
+	}
 
-    fn tab_label(&self) -> TabLabel {
-        //TabLabel::Text(self.title())
-        TabLabel::IconText(Icon::Calc.into(), self.title())
-    }
+	fn tab_label(&self) -> TabLabel {
+		//TabLabel::Text(self.title())
+		TabLabel::IconText(Icon::Calc.into(), self.title())
+	}
 
-    fn content(&mut self) -> Element<'_, Self::Message> {
-        let content: Element<'_, CounterMessage> = Container::new(
-            Column::new()
-                .align_items(Align::Center)
-                .max_width(600)
-                .padding(20)
-                .spacing(16)
-                .push(Text::new(format!("Count: {}", self.value)).size(32))
-                .push(
-                    Row::new()
-                        .spacing(10)
-                        .push(
-                            Button::new(&mut self.decrease_button, Text::new("Decrease"))
-                                .on_press(CounterMessage::Decrease),
-                        )
-                        .push(
-                            Button::new(&mut self.increase_button, Text::new("Increase"))
-                                .on_press(CounterMessage::Increase),
-                        ),
-                ),
-        )
-        .into();
+	fn content(&mut self) -> Element<'_, Self::Message> {
+		let content =
+			Column::new().push(self.map.view().map(move |message| Message::NetMap(message)));
 
-        content.map(Message::Counter)
-    }
+		Container::new(content)
+			.width(Length::Fill)
+			.height(Length::Fill)
+			.into()
+	}
+}
+
+mod network_map {
+	use iced::{
+		canvas::{self, event, Cache, Cursor, Event, Geometry, Path},
+		mouse, Canvas, Color, Element, Length, Point, Rectangle, Vector,
+	};
+	use nalgebra::Vector2;
+
+	#[derive(Derivative)]
+	#[derivative(Default)]
+	enum Interaction {
+		#[derivative(Default)]
+		None,
+		Selecting,
+		Panning {
+			translation: Vector,
+			start: Point,
+		},
+	}
+
+	#[derive(Debug, Clone)]
+	pub struct NetworkNode {
+		position: Vector2<i64>, // Position
+		size: u32,
+		state: u8,
+		connections: Vec<usize>, // Vector of indices representing outgoing connections
+	}
+
+	#[derive(Derivative)]
+	#[derivative(Default)]
+	pub struct NetworkMap {
+		pub nodes: Vec<NetworkNode>,
+		node_cache: Cache,
+		#[derivative(Default(value="1.0"))]
+		scaling: f32,
+		translation: Vector,
+		interaction: Interaction,
+	}
+	#[derive(Debug, Clone)]
+	pub enum Message {
+		// Output
+		NodeClicked(usize),
+		// Input
+		Update,
+	}
+	impl NetworkMap {
+		pub fn new(nodes: Vec<NetworkNode>) -> Self {
+			Self {
+				nodes,
+				..Default::default()
+			}
+		}
+		pub fn test_conf() -> Self {
+			Self {
+				nodes: vec![
+					NetworkNode {
+						position: Vector2::new(0, 0),
+						size: 30,
+						state: 0,
+						connections: vec![1],
+					},
+					NetworkNode {
+						position: Vector2::new(500, 0),
+						size: 30,
+						state: 2,
+						connections: vec![0],
+					},
+					NetworkNode {
+						position: Vector2::new(300, 0),
+						size: 30,
+						state: 2,
+						connections: vec![0],
+					},
+					NetworkNode {
+						position: Vector2::new(200, -500),
+						size: 40,
+						state: 1,
+						connections: vec![0, 1],
+					},
+				],
+				..Default::default()
+			}
+		}
+		pub fn update(&mut self, message: Message) {
+			match message {
+				Message::Update => {}
+				_ => unreachable!(),
+			}
+		}
+		pub fn view<'a>(&'a mut self) -> Element<'a, Message> {
+			Canvas::new(self)
+				.width(Length::Fill)
+				.height(Length::Fill)
+				.into()
+		}
+	}
+
+	impl<'a> canvas::Program<Message> for NetworkMap {
+		fn update(
+			&mut self,
+			event: Event,
+			bounds: Rectangle,
+			cursor: Cursor,
+		) -> (event::Status, Option<Message>) {
+			if let Event::Mouse(mouse::Event::ButtonReleased(_)) = event {
+				self.interaction = Interaction::None;
+			}
+
+			let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
+				position
+			} else {
+				return (event::Status::Ignored, None);
+			};
+
+			if let Event::Mouse(mouse_event) = event {
+				match mouse_event {
+					mouse::Event::ButtonPressed(button) => {
+						if button == mouse::Button::Left {
+							self.interaction = Interaction::Panning {
+								translation: self.translation,
+								start: cursor_position,
+							}
+						}
+						(event::Status::Captured, None)
+					}
+					mouse::Event::CursorMoved { .. } => {
+                        match self.interaction {
+                            Interaction::Panning { translation, start } => {
+                                self.translation = translation
+                                    + (cursor_position - start)
+                                        * (1.0 / self.scaling);
+
+                                self.node_cache.clear();
+								//println!("Translation: {:?}", self.translation);
+                            }
+                            _ => {},
+                        };
+
+                        let event_status = match self.interaction {
+                            Interaction::None => event::Status::Ignored,
+                            _ => event::Status::Captured,
+                        };
+
+                        (event_status, None)
+                    }
+					mouse::Event::WheelScrolled { delta } => match delta {
+						mouse::ScrollDelta::Lines { y, .. }
+						| mouse::ScrollDelta::Pixels { y, .. } => {
+							let old_scaling = self.scaling;
+
+							self.scaling = (self.scaling * (1.0 + y / 30.0));
+
+							if let Some(cursor_to_center) = cursor.position_from(bounds.center()) {
+								let factor = self.scaling - old_scaling;
+
+								self.translation = self.translation
+									- Vector::new(
+										cursor_to_center.x * factor / (old_scaling * old_scaling),
+										cursor_to_center.y * factor / (old_scaling * old_scaling),
+									);
+							}
+
+							self.node_cache.clear();
+							//println!("Scaling: {}", self.scaling);
+
+							(event::Status::Captured, None)
+						}
+					},
+					_ => { (event::Status::Ignored, None) },
+				}
+			} else {
+				(event::Status::Ignored, None)
+			}
+			/* let cursor_position = Vector2::new(
+				(self.translation.x + cursor_position.x) * self.scaling,
+				(self.translation.y + cursor_position.y) * self.scaling,
+			); */
+			/* for node in &self.nodes {
+				if (cursor_position - node.position).magnitude_squared() < size * size {
+
+				}
+			} */
+		}
+
+		fn draw(&self, bounds: Rectangle, cursor: Cursor) -> Vec<Geometry> {
+			let center = Vector::new(bounds.width / 2.0, bounds.height / 2.0);
+
+			let nodes = self.node_cache.draw(bounds.size(), |frame| {
+				let background = Path::rectangle(Point::ORIGIN, frame.size());
+				frame.fill(&background, Color::from_rgb8(240, 240, 240));
+
+				frame.with_save(|frame| {
+					frame.translate(center);
+					frame.scale(self.scaling);
+					frame.translate(self.translation);
+					//frame.scale(Cell::SIZE as f32);
+					for node in &self.nodes {
+						let point = Point::new(node.position.x as f32, node.position.y as f32);
+						frame.fill(&Path::circle(point, node.size as f32), Color::BLACK);
+					}
+				});
+			});
+			vec![nodes]
+		}
+
+		fn mouse_interaction(&self, bounds: Rectangle, cursor: Cursor) -> mouse::Interaction {
+			match self.interaction {
+				Interaction::Selecting => mouse::Interaction::Idle,
+				Interaction::Panning { .. } => mouse::Interaction::Grabbing,
+				Interaction::None if cursor.is_over(&bounds) => mouse::Interaction::Idle,
+				_ => mouse::Interaction::default(),
+			}
+		}
+	}
 }
