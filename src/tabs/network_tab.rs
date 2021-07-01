@@ -32,17 +32,16 @@ impl Tab for NetworkTab {
 	type Message = Message;
 
 	fn title(&self) -> String {
-		String::from("Counter")
+		String::from("Internet")
 	}
 
 	fn tab_label(&self) -> TabLabel {
 		//TabLabel::Text(self.title())
-		TabLabel::IconText(Icon::Calc.into(), self.title())
+		TabLabel::IconText(Icon::Centralized.into(), self.title())
 	}
 
 	fn content(&mut self) -> Element<'_, Self::Message> {
-		let content =
-			Column::new().push(self.map.view().map(move |message| Message::NetMap(message)));
+		let content = Column::new().push(self.map.view().map(move |message| Message::NetMap(message)));
 
 		Container::new(content)
 			.width(Length::Fill)
@@ -96,6 +95,9 @@ mod network_map {
 		Update,
 	}
 	impl NetworkMap {
+		const MIN_SCALING: f32 = 0.1;
+		const MAX_SCALING: f32 = 2.0;
+
 		pub fn new(nodes: Vec<NetworkNode>) -> Self {
 			Self {
 				nodes,
@@ -200,7 +202,7 @@ mod network_map {
 						| mouse::ScrollDelta::Pixels { y, .. } => {
 							let old_scaling = self.scaling;
 
-							self.scaling = (self.scaling * (1.0 + y / 30.0));
+							self.scaling = (self.scaling * (1.0 + y / 30.0)).max(Self::MIN_SCALING).min(Self::MAX_SCALING);;
 
 							if let Some(cursor_to_center) = cursor.position_from(bounds.center()) {
 								let factor = self.scaling - old_scaling;

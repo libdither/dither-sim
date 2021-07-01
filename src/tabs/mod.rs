@@ -16,23 +16,19 @@ use virtual_tab::{LoginMessage, LoginTab};
 
 const ICON_FONT: Font = iced::Font::External {
 	name: "Icons",
-	bytes: include_bytes!("icons.ttf"),
+	bytes: include_bytes!("../assets/icon_font.ttf"),
 };
 
 enum Icon {
-	User,
-	Heart,
-	Calc,
-	CogAlt,
+	Centralized,
+	Decentralized,
 }
 
 impl From<Icon> for char {
 	fn from(icon: Icon) -> Self {
 		match icon {
-			Icon::User => '\u{E800}',
-			Icon::Heart => '\u{E801}',
-			Icon::Calc => '\u{F1EC}',
-			Icon::CogAlt => '\u{E802}',
+			Icon::Centralized => 'B',
+			Icon::Decentralized => 'A',
 		}
 	}
 }
@@ -93,8 +89,7 @@ trait Tab {
 
 	fn view(&mut self) -> Element<'_, Self::Message> {
 		let column = Column::new()
-			.spacing(20)
-			.push(Text::new(self.title()).size(HEADER_SIZE))
+			//.push(Text::new(self.title()).size(HEADER_SIZE))
 			.push(self.content());
 
 		Container::new(column)
@@ -102,7 +97,7 @@ trait Tab {
 			.height(Length::Fill)
 			.align_x(Align::Center)
 			.align_y(Align::Center)
-			.padding(TAB_PADDING)
+			//.padding(TAB_PADDING)
 			.into()
 	}
 

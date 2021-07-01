@@ -57,7 +57,7 @@ impl Tab for LoginTab {
 
 	fn tab_label(&self) -> TabLabel {
 		//TabLabel::Text(self.title())
-		TabLabel::IconText(Icon::User.into(), self.title())
+		TabLabel::IconText(Icon::Decentralized.into(), self.title())
 	}
 
 	fn content(&mut self) -> Element<'_, Self::Message> {
