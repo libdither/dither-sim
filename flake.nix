@@ -11,11 +11,14 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
+		chan = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default.override {
+			extensions = [ "rust-src" "clippy" ];
+		});
 	in rec {
 		# `nix develop`
 		devShell = pkgs.mkShell {
 			buildInputs = with pkgs; [
-				pkgs.rust-bin.nightly.latest.default
+				chan
 				cmake
 				pkgconfig
 				stdenv.cc.cc.lib
