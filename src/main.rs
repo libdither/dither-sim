@@ -9,7 +9,6 @@ use rand::{rngs::SmallRng, SeedableRng};
 
 use crate::gui::{NetSimApp, NetSimAppSettings};
 mod gui;
-mod tabs;
 
 fn main() -> anyhow::Result<()> {
 	env_logger::init();

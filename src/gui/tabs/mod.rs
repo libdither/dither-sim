@@ -11,8 +11,8 @@ mod theme;
 mod network_tab;
 use network_tab::NetworkTab;
 
-mod virtual_tab;
-use virtual_tab::{LoginMessage, LoginTab};
+mod dither_tab;
+use dither_tab::DitherTab;
 
 const ICON_FONT: Font = iced::Font::External {
 	name: "Icons",
@@ -20,15 +20,15 @@ const ICON_FONT: Font = iced::Font::External {
 };
 
 enum Icon {
-	Centralized,
-	Decentralized,
+	CentralizedNetwork,
+	DistributedNetwork,
 }
 
 impl From<Icon> for char {
 	fn from(icon: Icon) -> Self {
 		match icon {
-			Icon::Centralized => 'B',
-			Icon::Decentralized => 'A',
+			Icon::CentralizedNetwork => 'B',
+			Icon::DistributedNetwork => 'A',
 		}
 	}
 }
@@ -36,14 +36,14 @@ impl From<Icon> for char {
 pub struct TabBar {
 	active_tab: usize,
 	network_tab: NetworkTab,
-	login_tab: LoginTab,
+	dither_tab: DitherTab,
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
 	TabSelected(usize),
-	Network(network_tab::Message),
-	Login(LoginMessage),
+	NetworkTab(network_tab::Message),
+	DitherTab(dither_tab::Message),
 }
 
 impl TabBar {
@@ -51,15 +51,15 @@ impl TabBar {
 		TabBar {
 			active_tab: 0,
 			network_tab: NetworkTab::new(),
-			login_tab: LoginTab::new(),
+			dither_tab: DitherTab::new(),
 		}
 	}
 
 	pub fn update(&mut self, message: Message) {
 		match message {
 			Message::TabSelected(selected) => self.active_tab = selected,
-			Message::Network(message) => self.network_tab.update(message),
-			Message::Login(message) => self.login_tab.update(message),
+			Message::NetworkTab(message) => self.network_tab.update(message),
+			Message::DitherTab(message) => self.dither_tab.update(message),
 		}
 	}
 
@@ -71,8 +71,8 @@ impl TabBar {
 			.unwrap_or_default(); */
 
 		Tabs::new(self.active_tab, Message::TabSelected)
-			.push(self.network_tab.tab_label(), self.network_tab.view().map(|m|Message::Network(m)))
-			.push(self.login_tab.tab_label(), self.login_tab.view())
+			.push(self.network_tab.tab_label(), self.network_tab.view().map(|m|Message::NetworkTab(m)))
+			.push(self.dither_tab.tab_label(), self.dither_tab.view().map(|m|Message::DitherTab(m)))
 			.tab_bar_style(theme::Theme::Default)
 			.icon_font(ICON_FONT)
 			.tab_bar_position(TabBarPosition::Top)
