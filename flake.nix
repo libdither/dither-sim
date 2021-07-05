@@ -11,16 +11,14 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
-		chan = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default.override {
+		rust-toolchain = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default.override {
 			extensions = [ "rust-src" "clippy" ];
 		});
 	in rec {
 		# `nix develop`
 		devShell = pkgs.mkShell {
+			nativeBuildInputs = with pkgs; [ pkg-config cmake rust-toolchain ];
 			buildInputs = with pkgs; [
-				chan
-				cmake
-				pkgconfig
 				stdenv.cc.cc.lib
 				lld
 				
@@ -36,8 +34,10 @@
 				fontconfig
 				freetype
 			];
-			#hardeningDisable = [ "fortify" ];
-			#NIX_CFLAGS_LINK = "-fuse-ld=lld";
+			hardeningDisable = [ "fortify" ];
+			NIX_CFLAGS_LINK = "-fuse-ld=lld";
+			LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib64:$LD_LIBRARY_PATH"; # Fix can't find libstdc++.so.6
+			PKG_CONFIG_PATH = "${pkgs.libxkbcommon.dev}/lib/pkgconfig";
 		};
 	});
 }
