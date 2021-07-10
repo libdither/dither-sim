@@ -14,11 +14,15 @@
 		rust-toolchain = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default.override {
 			extensions = [ "rust-src" "clippy" ];
 		});
+
+		llvmPkgs = pkgs.buildPackages.llvmPackages_11;
+		mkShell = pkgs.mkShell.override { stdenv = llvmPkgs.stdenv; };
 	in rec {
 		# `nix develop`
-		devShell = pkgs.mkShell {
+		devShell = mkShell {
 			nativeBuildInputs = with pkgs; [ pkg-config cmake rust-toolchain ];
 			buildInputs = with pkgs; [
+				llvmPkgs.bintools
 				#stdenv.cc.cc.lib
 				#lld
 				
@@ -33,9 +37,10 @@
 				vulkan-validation-layers
 				fontconfig
 				freetype
+				
 			];
-			#hardeningDisable = [ "fortify" ];
-			#NIX_CFLAGS_LINK = "-fuse-ld=lld";
+			hardeningDisable = [ "fortify" ];
+			NIX_CFLAGS_LINK = "-fuse-ld=lld";
 			#LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib64:$LD_LIBRARY_PATH"; # Fix can't find libstdc++.so.6
 			#PKG_CONFIG_PATH = "${pkgs.libxkbcommon.dev}/lib/pkgconfig";
 			
