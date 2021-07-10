@@ -10,7 +10,7 @@ edition = "2018"
 plot = ["plotters"]
 
 [dependencies]
-anyhow = "1.0.41"
+anyhow = "1.0.42"
 bitflags = "1.2.1"
 derivative = "2.2.0"
 env_logger = "0.8.4"
@@ -24,13 +24,13 @@ serde_json = "1.0.64"
 bincode = "1.3.3"
 
 nalgebra = { version = "0.27.1", features = ["serde-serialize"] }
-petgraph = { version = "0.5.1", features = ["graphmap", "serde-1"] }
-slotmap = { version = "1.0.3", features = ["serde"] }
+petgraph = { version = "0.6.0", features = ["graphmap", "serde-1"] }
+slotmap = { version = "1.0.5", features = ["serde"] }
 smallvec = { version = "1.6.1", features = ["serde"] }
 bimap = { version = "0.6.1", features = ["serde"] }
 
-ta = "0.4.0"
-thiserror = "1.0.25"
+ta = "0.5.0"
+thiserror = "1.0.26"
 vpsearch = "2.0.1"
 permutation_iterator = "0.1.2"
 csv = "1.1.6"

@@ -11,7 +11,7 @@ members = ["sim", "cli"]
 
 [dependencies]
 sim = { path = "sim" }
-anyhow = "1.0.41"
+anyhow = "1.0.42"
 iced = { git = "https://github.com/zyansheep/iced", features = ["canvas"] }
 #iced_native = { git = "https://github.com/zyansheep/iced" }
 #iced_graphics = { git = "https://github.com/zyansheep/iced" }

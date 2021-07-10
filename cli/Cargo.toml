@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 sim = { path = "../sim", features = ["plot"] }
-anyhow = "1.0.41"
+anyhow = "1.0.42"
 env_logger = "0.8.4"
 rand = "0.8.4"
 fancy-regex = "0.6.0"
