@@ -19,8 +19,8 @@
 		devShell = pkgs.mkShell {
 			nativeBuildInputs = with pkgs; [ pkg-config cmake rust-toolchain ];
 			buildInputs = with pkgs; [
-				stdenv.cc.cc.lib
-				lld
+				#stdenv.cc.cc.lib
+				#lld
 				
 				x11
 				xorg.libXcursor
@@ -34,10 +34,12 @@
 				fontconfig
 				freetype
 			];
-			hardeningDisable = [ "fortify" ];
-			NIX_CFLAGS_LINK = "-fuse-ld=lld";
-			LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib64:$LD_LIBRARY_PATH"; # Fix can't find libstdc++.so.6
-			PKG_CONFIG_PATH = "${pkgs.libxkbcommon.dev}/lib/pkgconfig";
+			#hardeningDisable = [ "fortify" ];
+			#NIX_CFLAGS_LINK = "-fuse-ld=lld";
+			#LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib64:$LD_LIBRARY_PATH"; # Fix can't find libstdc++.so.6
+			#PKG_CONFIG_PATH = "${pkgs.libxkbcommon.dev}/lib/pkgconfig";
+			
+			LD_LIBRARY_PATH="${pkgs.vulkan-loader}/lib"; # Vulkan Fix
 		};
 	});
 }
