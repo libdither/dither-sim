@@ -1,10 +1,12 @@
+#![feature(try_blocks)]
+
 #[macro_use]
 extern crate derivative;
 
 use std::{fs, io::BufReader};
 
 use sim::{DEFAULT_CACHE_FILE, NetSim, Node};
-use iced::{Application, Settings};
+use iced::{Application, Settings, window};
 use rand::{rngs::SmallRng, SeedableRng};
 
 use crate::gui::{NetSimApp, NetSimAppSettings};
@@ -24,7 +26,13 @@ fn main() -> anyhow::Result<()> {
 		NetSim::<Node>::new()
 	};
 
-	//cli::run(&mut internet, rng)
-	NetSimApp::run(Settings::with_flags(NetSimAppSettings { net_sim: internet }))?;
+	let mut settings = Settings::with_flags(NetSimAppSettings {net_sim: internet});
+	settings.window = window::Settings {
+		resizable: false,
+		..Default::default()
+	};
+
+	NetSimApp::run(settings)?;
+
 	Ok(())
 }
