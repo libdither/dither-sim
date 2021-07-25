@@ -10,8 +10,6 @@ extern crate thiserror;
 #[macro_use]
 extern crate derivative;
 #[macro_use]
-extern crate anyhow;
-#[macro_use]
 extern crate bitflags;
 #[macro_use]
 extern crate slotmap;

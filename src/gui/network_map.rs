@@ -1,3 +1,4 @@
+#![allow(unused)]
 
 use iced::{
 	canvas::{self, event, Cache, Cursor, Event, Geometry, Path},
@@ -41,17 +42,11 @@ pub enum Message {
 	NodeClicked(usize),
 	// Input
 	Update,
+	UpdateMap(Vec<NetworkNode>)
 }
 impl NetworkMap {
 	const MIN_SCALING: f32 = 0.1;
 	const MAX_SCALING: f32 = 2.0;
-
-	pub fn new(nodes: Vec<NetworkNode>) -> Self {
-		Self {
-			nodes,
-			..Default::default()
-		}
-	}
 	pub fn test_conf() -> Self {
 		Self {
 			nodes: vec![
@@ -86,6 +81,7 @@ impl NetworkMap {
 	pub fn update(&mut self, message: Message) {
 		match message {
 			Message::Update => {}
+			Message::UpdateMap(nodes) => self.nodes = nodes,
 			_ => unreachable!(),
 		}
 	}

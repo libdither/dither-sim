@@ -56,7 +56,7 @@ impl Application for NetSimApp {
 	fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
 		let rng = &mut rand::thread_rng();
 		match message {
-			Message::TabUpdate(message) => self.tabs.update(message),
+			Message::TabUpdate(tab_message) => self.tabs.update(tab_message),
 			Message::StepNetwork => self.internet.tick(100, rng),
 			Message::ToggleRunning(toggle) => {
 				self.top_bar.toggle_sim = toggle;
