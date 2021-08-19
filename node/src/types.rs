@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-pub use crate::node::session::{RemoteSession, SessionError, SessionType, RoutedSession};
+pub use crate::session::{RemoteSession, SessionError, SessionType, RoutedSession};
 
 use vpsearch::MetricSpace;
 use nalgebra::Point2;
@@ -42,3 +42,5 @@ impl MetricSpace<MyImpl> for RouteCoord {
         f64::sqrt((dx*dx + dy*dy) as f64) // sqrt is required
     }
 }
+
+pub type NetAddr = u64;

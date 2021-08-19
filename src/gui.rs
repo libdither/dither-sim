@@ -6,7 +6,7 @@ use iced::Checkbox;
 
 use sim::{internet::NetSim, node::Node};
 
-mod network_map;
+pub mod network_map;
 mod tabs;
 
 use tabs::TabBar;

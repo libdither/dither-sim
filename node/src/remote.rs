@@ -1,6 +1,13 @@
+use std::time::Instant;
+
 use super::{InternetPacket, Node, NodeError, NodeID, NodePacket, RemoteSession, RouteCoord, SessionError, SessionID, session::SessionType};
 
 use thiserror::Error;
+
+/// Actions received by the task managing a connection to a remote node
+pub enum RemoteAction {
+	SendData(Vec<u8>)
+}
 
 #[derive(Error, Debug)]
 pub enum RemoteNodeError {
@@ -16,15 +23,21 @@ pub enum RemoteNodeError {
 	SessionError(#[from] SessionError),
 }
 
+/// Remote Node Is an Internal Structure of a Dither Node, it is managed by an independent thread when the remote is connected. Otherwise it is stored.
 #[derive(Debug, Derivative, Serialize, Deserialize)]
 #[derivative(Hash, PartialEq, Eq)]
 pub struct RemoteNode {
-	// The ID of the remote node
+	/// The ID of the remote node, This structure is created when an encrypted link is established.
 	pub node_id: NodeID,
-	// Received Route Coordinate of the Remote Node
+
+	/// Time of last packet
+	pub last_packet_time: Instant,
+
+	/// Known Route Coordinate to communicate with remote node.
 	#[derivative(PartialEq="ignore", Hash="ignore")]
 	pub route_coord: Option<RouteCoord>,
-	// If handshake is pending: Some(pending_session_id, time_sent_handshake, packets_to_send)
+
+	/// If handshake is pending: Some(pending_session_id, time_sent_handshake, packets_to_send)
 	#[derivative(PartialEq="ignore", Hash="ignore")]
 	#[serde(skip)]
 	pub pending_session: Option<Box< (SessionID, usize, Vec<NodePacket>, SessionType) >>,

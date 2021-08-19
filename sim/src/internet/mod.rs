@@ -1,6 +1,6 @@
 //#![allow(dead_code)]
 
-use std::{collections::HashMap, fmt::Debug, fs::File, hash::Hash, io::{BufRead, BufReader, Write}};
+use std::{collections::HashMap, fmt::Debug, fs::File, hash::Hash, io::{BufRead, BufReader, Write}, net::IpAddr};
 use std::any::Any;
 use std::ops::Range;
 
@@ -12,9 +12,38 @@ use smallvec::SmallVec;
 mod router;
 use router::NetSimRouter;
 
-use crate::{Node, node::RouteCoord};
+use node::Node;
+use tokio::sync;
 
-pub const FIELD_DIMENSIONS: (Range<i32>, Range<i32>) = (-320..320, -130..130);
+/// All Dither Nodes and Routing Nodes will be organized on a field
+/// Internet Simulation Field Dimensions (Measured in Nanolightseconds): 64ms x 26ms
+pub const FIELD_DIMENSIONS: (Range<i32>, Range<i32>) = (-320000..320000, -130000..130000);
+
+pub type FieldPosition = Vector2<i32>;
+pub type InternalLatency = u32;
+
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct InternetNode {
+	position: FieldPosition, // Position on Internet Simulation Field
+	internal_latency: InternalLatency, // Measured In Nanoseconds
+	#[derivative(Debug="crate::node::node_id_formatter")]
+	node: Option<Node>, // Whether this node supports the Dither protocol
+}
+impl InternetNode {
+	pub fn new(position: FieldPosition, internal_latency: InternalLatency) -> Self {
+		Self {
+			position,
+			internal_latency,
+			node: None,
+		}
+	}
+}
+
+pub enum InternetEvent {
+	AddNode(InternetNode),
+
+}
 
 #[derive(Error, Debug)]
 pub enum InternetError {

@@ -1,7 +1,3 @@
-#![feature(drain_filter)]
-#![feature(backtrace)]
-#![feature(try_blocks)]
-
 #[macro_use]
 extern crate serde;
 extern crate log;
@@ -11,13 +7,9 @@ extern crate thiserror;
 extern crate derivative;
 #[macro_use]
 extern crate bitflags;
-#[macro_use]
-extern crate slotmap;
 
 pub mod internet;
 pub use internet::NetSim;
-pub mod node;
-pub use node::Node;
 #[cfg(feature = "plot")]
 pub mod plot;
 
