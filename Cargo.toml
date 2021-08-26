@@ -30,6 +30,7 @@ derivative = "2.2.0"
 slotmap = "1.0.5"
 tokio = "1.8.1"
 futures = "0.3.16"
+serde = "1.0.127"
 
 [dev-dependencies]
 iced = { git = "https://github.com/zyansheep/iced", features = ["dynamic"] }

@@ -1,12 +1,16 @@
 use std::time::Instant;
 
-use super::{InternetPacket, Node, NodeError, NodeID, NodePacket, RemoteSession, RouteCoord, SessionError, SessionID, session::SessionType};
+use crate::{Remote, net::Connection, packet::NodePacket, session};
 
+use super::{Node, NodeError, NodeID, NodeAction, RemoteSession, RouteCoord, SessionError, SessionID, session::SessionType};
+
+use async_std::channel::{self, Receiver, Sender};
 use thiserror::Error;
 
-/// Actions received by the task managing a connection to a remote node
+/// Actions received by the task managing a connection to a remote node from the main node thread.
 pub enum RemoteAction {
-	SendData(Vec<u8>)
+	/// Receive Route Coordinate Query
+	QueryRouteCoordResponse(RouteCoord),
 }
 
 #[derive(Error, Debug)]
@@ -24,48 +28,56 @@ pub enum RemoteNodeError {
 }
 
 /// Remote Node Is an Internal Structure of a Dither Node, it is managed by an independent thread when the remote is connected. Otherwise it is stored.
-#[derive(Debug, Derivative, Serialize, Deserialize)]
-#[derivative(Hash, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RemoteNode {
 	/// The ID of the remote node, This structure is created when an encrypted link is established.
-	pub node_id: NodeID,
+	node_id: Option<NodeID>,
 
-	/// Time of last packet
-	pub last_packet_time: Instant,
+	/// Connection Object
+	connection: Connection,
 
 	/// Known Route Coordinate to communicate with remote node.
-	#[derivative(PartialEq="ignore", Hash="ignore")]
-	pub route_coord: Option<RouteCoord>,
+	route_coord: Option<RouteCoord>,
 
 	/// If handshake is pending: Some(pending_session_id, time_sent_handshake, packets_to_send)
-	#[derivative(PartialEq="ignore", Hash="ignore")]
-	#[serde(skip)]
-	pub pending_session: Option<Box< (SessionID, usize, Vec<NodePacket>, SessionType) >>,
+	//#[serde(skip)]
+	//pending_session: Option<Box< (SessionID, usize, Vec<NodePacket>, SessionType) >>,
 	// Contains Session details if session is connected
-	#[derivative(PartialEq="ignore", Hash="ignore")]
-	pub session: Option<RemoteSession>, // Session object, is None if no connection is active
+	//session: Option<RemoteSession>, // Session object, is None if no connection is active
+	action_receiver: Receiver<RemoteAction>,
+	action_sender: Sender<RemoteAction>,
 }
 impl RemoteNode {
-	pub fn new(node_id: NodeID) -> Self {
-		Self {
+	pub fn new(connection: Connection) -> (RemoteNode, Remote) {
+		new_known_remote(None, connection)
+	}
+	pub fn new_known_remote(node_id: Option<NodeID>, connection: Connection) -> (RemoteNode, Remote) {
+		let (action_sender, action_receiver) = channel::bounded(20);
+		(Self {
 			node_id,
+			connection,
 			route_coord: None,
-			pending_session: None,
-			session: None,
+			action_receiver,
+			action_sender,
+		}, Remote {
+			node_id,
+			address: connection.address,
+			action_sender,
+		})
+	}
+	pub async fn run(self, node_action: Sender<NodeAction>) {
+		let node_action = node_action;
+		while let Ok(action) = self.action_receiver.recv().await {
+			session::Session::start(self.action_sender)
 		}
 	}
-	pub fn session_active(&self) -> bool {
+
+	fn session_active(&self) -> bool {
 		self.session.is_some() && self.pending_session.is_none()
-	}
-	pub fn session(&self) -> Result<&RemoteSession, RemoteNodeError> {
-		self.session.as_ref().ok_or( RemoteNodeError::NoSessionError { node_id: self.node_id } )
-	} 
-	pub fn session_mut(&mut self) -> Result<&mut RemoteSession, RemoteNodeError> {
-		self.session.as_mut().ok_or( RemoteNodeError::NoSessionError { node_id: self.node_id } )
 	}
 	/// Check if a peer is viable or not
 	// TODO: Create condition that rejects nodes if there is another closer node located in a specific direction
-	pub fn is_viable_peer(&self, _self_route_coord: RouteCoord) -> Option<RouteCoord> {
+	fn is_viable_peer(&self, _self_route_coord: RouteCoord) -> Option<RouteCoord> {
 		if let (Some(route_coord), Some(session)) = (self.route_coord, &self.session) {
 			//let avg_dist = session.tracker.dist_avg;
 			//let route_dist = nalgebra::distance(route_coord.map(|s|s as f64), self_route_coord.map(|s|s as f64));
@@ -73,13 +85,5 @@ impl RemoteNode {
 				return Some(route_coord.clone());
 			} else { None }
 		} else { None }
-	}
-	
-	/// Generate NodeEncryption from NodePacket doing whatever needs to be done to route it through the network securely
-	pub fn gen_packet(&self, packet: NodePacket, node: &Node) -> Result<InternetPacket, NodeError> {
-		let session = self.session()?;
-		let encryption = session.wrap_session(packet);
-
-		Ok(session.gen_packet(encryption, node)?)
 	}
 }

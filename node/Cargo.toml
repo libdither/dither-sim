@@ -8,12 +8,17 @@ edition = "2018"
 [dependencies]
 async-std = "1.9.0"
 
-nalgebra = { version = "0.27.1", features = ["serde-serialize"] }
+nalgebra = { version = "0.29.0", features = ["serde-serialize"] }
 petgraph = { version = "0.6.0", features = ["graphmap", "serde-1"] }
 slotmap = { version = "1.0.5", features = ["serde"] }
 smallvec = { version = "1.6.1", features = ["serde"] }
 bimap = { version = "0.6.1", features = ["serde"] }
 vpsearch = "2.0.1"
+log = "0.4.14"
+serde = { version = "1.0.127", features = ["derive"] }
+thiserror = "1.0.26"
+futures = "0.3.16"
+bincode = "1.3.3"
 
 [lib]
 name = "node"
