@@ -1,4 +1,4 @@
-//! This session module manages the ongoing state of the connection. It deals mostly with package parsing and encryption.
+//! This session module manages the ongoing state of a connection to a remote node. It deals with encryption and packet parsing.
 //! It has two "threads" that manage reading and writing, and both report back to the RemoteNode via RemoteActions
 
 use async_std::{channel::{self, Sender}, task::{self, JoinHandle}};
@@ -11,6 +11,9 @@ pub type SessionKey = u128;
 pub enum SessionAction {
 	SendPacket(NodePacket),
 	DecryptedPacket(NodePacket),
+}
+pub enum SessionError {
+	TunnelClosed,
 }
 
 pub struct Session {

@@ -15,10 +15,12 @@ smallvec = { version = "1.6.1", features = ["serde"] }
 bimap = { version = "0.6.1", features = ["serde"] }
 vpsearch = "2.0.1"
 log = "0.4.14"
-serde = { version = "1.0.127", features = ["derive"] }
 thiserror = "1.0.26"
 futures = "0.3.16"
-bincode = "1.3.3"
+derivative = "2.2.0"
+anyhow = "1.0.43"
+rkyv = "0.7.13" # Zero-Copy Serialization
+serde = "1.0.130"
 
 [lib]
 name = "node"
