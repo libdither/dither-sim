@@ -6,7 +6,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-std = "1.9.0"
+tokio = { version = "1.11.0", features = ["full"] }
 
 nalgebra = { version = "0.29.0", features = ["serde-serialize"] }
 petgraph = { version = "0.6.0", features = ["graphmap", "serde-1"] }
@@ -21,6 +21,8 @@ derivative = "2.2.0"
 anyhow = "1.0.43"
 rkyv = "0.7.13" # Zero-Copy Serialization
 serde = "1.0.130"
+tokio-util = { version = "0.6.8", features = ["codec"] }
+rand = "0.8.4"
 
 [lib]
 name = "node"

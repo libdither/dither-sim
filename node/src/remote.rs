@@ -1,19 +1,24 @@
 //! This is the remote module, It manages actions too and from a remote node
 
-use std::{sync::Arc, time::Instant};
+use crate::{Remote, net::{Connection}, packet::NodePacket, session};
 
-use crate::{Remote, net::Connection, packet::NodePacket, session};
-
-use super::{Node, NodeError, NodeID, NodeAction, RouteCoord};
+use super::{NodeID, NodeAction, RouteCoord};
 use session::*;
 
-use async_std::channel::{self, Receiver, Sender};
+use tokio::{sync::mpsc::{Receiver, Sender, error::SendError}, task::{JoinError, JoinHandle}};
 use thiserror::Error;
 
 /// Actions received by the task managing a connection to a remote node from the main node thread.
+#[derive(Debug)]
 pub enum RemoteAction {
-	/// Receive Route Coordinate Query
-	QueryRouteCoordResponse(RouteCoord),
+	/// From Main Thread
+	/// Handle Connection passed through main node from network
+	HandleConnection(Connection),
+	/// Query Route Coord from Network DHT, will be handled by actually DHT in future.
+	RouteCoordQuery(RouteCoord),
+
+	/// From Session Thread
+	ReceivePacket(NodePacket),
 }
 
 #[derive(Error, Debug)]
@@ -24,65 +29,67 @@ pub enum RemoteNodeError {
 	NoPendingHandshake,
 	#[error("Session Error")]
 	SessionError(#[from] SessionError),
+	#[error("Channel Send Error")]
+	SessionChannelError(#[from] SendError<SessionAction>),
+	#[error("Session Join Error")]
+	JoinError(#[from] JoinError),
 }
 
 /// Remote Node Is an Internal Structure of a Dither Node, it is managed by an independent thread when the remote is connected and sends messages back and forth with the session and the main node.
 /// The 
 #[derive(Debug)]
 pub struct RemoteNode {
-	/// The ID of the remote node, This structure is created when an encrypted link is established.
+	/// The ID of the remote node, Set when the NodeID is known beforehand or an encrypted link has just been connected
 	node_id: Option<NodeID>,
-
-	/// Connection Object
-	connection: Arc<Connection>,
 
 	/// Known Route Coordinate to communicate with remote node.
 	route_coord: Option<RouteCoord>,
 
-	// Action receivers and senders
-	action_receiver: Receiver<RemoteAction>,
+	session: Option<Session>,
+
 	action_sender: Sender<RemoteAction>,
 }
 impl RemoteNode {
-	pub fn new_known_remote(node_id: Option<NodeID>, connection: Connection) -> (RemoteNode, Remote) {
-		let (action_sender, action_receiver) = channel::bounded(20);
-		(Self {
-			node_id,
-			connection,
-			route_coord: None,
-			action_receiver,
+	pub fn new<'a>(remote: Option<&'a Remote>, action_sender: Sender<RemoteAction>) -> RemoteNode {
+		Self {
+			node_id: remote.map(|r|r.node_id.clone()).flatten(),
+			route_coord: remote.map(|r|r.route_coord.clone()).flatten(),
+			session: remote.map(|r|r.session.clone()).flatten(),
 			action_sender,
-		}, Remote {
-			node_id,
-			address: connection.address,
-			action_sender,
-		})
-	}
-	pub fn new(connection: Connection) -> (RemoteNode, Remote) {
-		Self::new_known_remote(None, connection)
-	}
-	// Run remote action event loop. Consumes itself, should be run on independent thread
-	pub async fn run(self, node_action: Sender<NodeAction>) {
-		let node_action = node_action;
-
-		let (join_handle, session_action) = session::Session::start(self.connection.clone(), self.action_sender);
-		while let Ok(action) = self.action_receiver.recv().await {
-
 		}
 	}
-
-	fn session_active(&self) -> bool {
-		self.session.is_some() && self.pending_session.is_none()
-	}
-	/// Check if a peer is viable or not
-	// TODO: Create condition that rejects nodes if there is another closer node located in a specific direction
-	fn is_viable_peer(&self, _self_route_coord: RouteCoord) -> Option<RouteCoord> {
-		if let (Some(route_coord), Some(session)) = (self.route_coord, &self.session) {
-			//let avg_dist = session.tracker.dist_avg;
-			//let route_dist = nalgebra::distance(route_coord.map(|s|s as f64), self_route_coord.map(|s|s as f64));
-			if session.direct().is_ok() {
-				return Some(route_coord.clone());
-			} else { None }
-		} else { None }
+	// Run remote action event loop. Consumes itself, should be run on independent thread
+	pub async fn run(mut self, mut action_receiver: Receiver<RemoteAction>, node_action: Sender<NodeAction>) -> Result<(), RemoteNodeError> {
+		// TODO: Do return sending
+		let _node_action = node_action;
+		
+		let (mut session_join_handle, mut session_action) = (None::<JoinHandle<Session>>, None::<Sender<SessionAction>>);
+		while let Some(action) = action_receiver.recv().await {
+			match action {
+				RemoteAction::HandleConnection(connection) => {
+					(session_join_handle, session_action) = match session_action.clone() {
+						Some(session_action) => {
+							session_action.send(SessionAction::NewConnection(connection)).await?;
+							(session_join_handle, Some(session_action))
+						},
+						None => {
+							let session = self.session.take().unwrap_or(Session::new());
+							Some(session.start(connection, self.action_sender.clone())).unzip()
+						},
+					}
+				},
+				RemoteAction::ReceivePacket(packet) => {
+					match packet {
+						_ => { todo!() }
+					}
+				},
+				_ => { todo!() }
+			}
+		}
+		// Wait for Session to end
+		if let Some(join_handle) = session_join_handle {
+			self.session = Some(join_handle.await.unwrap());
+		}
+		Ok(())
 	}
 }

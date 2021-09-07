@@ -1,26 +1,27 @@
 //! This is the Node Module, it defines all the behaviours of a Dither Node.
 //! It provides a simple API to the internet module containing it.
-#![allow(unused_imports)]
+#![allow(dead_code)]
+
 #![feature(drain_filter)]
 #![feature(backtrace)]
 #![feature(try_blocks)]
 #![feature(arbitrary_self_types)]
+#![feature(unzip_option)]
+#![feature(destructuring_assignment)]
 
-#[macro_use]
-extern crate log;
 #[macro_use]
 extern crate thiserror;
 #[macro_use]
 extern crate rkyv;
 #[macro_use]
 extern crate derivative;
+use serde;
 
-const TARGET_PEER_COUNT: usize = 10;
+use std::{collections::{BTreeMap, HashMap}, ops::{DerefMut}, time::Duration};
+use session::Session;
+use tokio::{sync::mpsc::{self, Receiver, Sender}, task::JoinHandle};
 
-use std::{collections::{BTreeMap, HashMap}, ops::{Deref, DerefMut}, time::Duration};
-use async_std::{channel::{self, Receiver, Sender}, task};
-use nalgebra::{Point, Vector2};
-use net::{Connection, NetAction};
+use net::{Address, Connection, ConnectionResponse, NetAction};
 use packet::NodePacket;
 
 pub mod net; // Fundamental network types;
@@ -33,10 +34,8 @@ mod types;
 use remote::{RemoteNode, RemoteAction, RemoteNodeError};
 pub use types::{NodeID, RouteCoord, RouteScalar};
 
-use bimap::BiHashMap;
 use petgraph::graphmap::DiGraphMap;
 use slotmap::{SlotMap, new_key_type};
-use smallvec::SmallVec;
 
 new_key_type! { pub struct RemoteIdx; }
 
@@ -45,19 +44,47 @@ new_key_type! { pub struct RemoteIdx; }
 pub struct Remote {
 	pub node_id: Option<NodeID>,
 
-	pub address: net::Address, 
+	pub address: net::Address,
+
+	pub route_coord: Option<RouteCoord>,
+
+	pub session: Option<Session>,
 
 	#[serde(skip)]
-	pub action_sender: Sender<RemoteAction>,
+	pub action_sender: Option<(Sender<RemoteAction>, JoinHandle<Result<(), RemoteNodeError>>)>,
 }
 
 impl Remote {
-	pub async fn action(&mut self, action: RemoteAction) {
-		self.action_sender.send(action).await;
+	pub fn new(address: net::Address, node_id: Option<NodeID>) -> Self {
+		Self {
+			node_id,
+			address,
+			route_coord: None,
+			session: None,
+			action_sender: None,
+		}
+	}
+	/// Send RemoteAction to remote thread and create if thread doesn't exist.
+	pub async fn action(&mut self, node_action: &Sender<NodeAction>, action: RemoteAction) -> Result<(), mpsc::error::SendError<RemoteAction>> {
+		let action_sender: &Sender<RemoteAction> = if let Some(action_sender) = &self.action_sender {
+			&action_sender.0
+		} else {
+			let (action_sender, action_receiver) = mpsc::channel(20);
+			let self_immutable = &*self;
+			let remote_node = RemoteNode::new(Some(self_immutable), action_sender.clone());
+
+			let node_action = node_action.clone();
+			let join_handle = tokio::spawn(async move {
+				remote_node.run(action_receiver, node_action).await
+			});
+
+			&self.action_sender.insert((action_sender, join_handle)).0
+		};
+		action_sender.send(action).await
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum NodeAction {
 	/// Actions that can be run by an external entity (either the internet implementation or the user)
 
@@ -69,7 +96,7 @@ pub enum NodeAction {
 	//Connect(net::Connection, NodeID, SessionType, Vec<NodePacket>),
 
 	/// Handle Incoming action (from Internet)
-	HandleNetAction(net::NetAction),
+	NetAction(net::NetAction),
 
 	UpdateRemote(NodeID, Option<RouteCoord>, usize, u64),
 	/// Request Peers of another node to ping me
@@ -101,12 +128,16 @@ pub enum NodeError {
 	// Error from Remote Node Thread
 	#[error(transparent)]
 	RemoteNodeError(#[from] RemoteNodeError),
+	#[error("RemoteNode mpsc channel backed up!")]
+	SendRemoteActionError(#[from] mpsc::error::SendError<RemoteAction>),
 
 	// When Accessing Remotes
 	#[error("Unknown Node Index: {node_idx:?}")]
 	UnknownNodeIndex { node_idx: RemoteIdx },
 	#[error("Unknown NodeID: {node_id:?}")]
 	UnknownNodeID { node_id: NodeID },
+	#[error("Unknown Network Addr: {net_addr:?}")]
+	UnknownNetAddr { net_addr: Address },
 
 	#[error("There is no calculated route coordinate for this node")]
 	NoCalculatedRouteCoord,
@@ -124,7 +155,7 @@ impl NodeError {
 	}
 }
 
-#[derive(Derivative, serde::Serialize, serde::Deserialize)]
+#[derive(Derivative)]
 #[derivative(Debug)]
 pub struct Node {
 	/// Universally Unique Identifier of a Node. In the future this will be the Multihash of the public key
@@ -141,6 +172,7 @@ pub struct Node {
 
 	/// This node's public routing coordinate(s) published to the DHT (there will be support for multiple in later versions).
 	#[derivative(Debug = "ignore")]
+	#[allow(dead_code)]
 	public_route: Option<RouteCoord>,
 
 	/// Amount of time passed since startup of this node
@@ -151,6 +183,10 @@ pub struct Node {
 	/// Map NodeIDs to Remote Node Idicies
 	ids: HashMap<NodeID, RemoteIdx>,
 
+	/// Map Addresses to Remote Node Idicies
+	//#[serde(skip)]
+	addrs: HashMap<Address, RemoteIdx>,
+
 	/// Sorted list of nodes based on how close they are latency-wise
 	direct_sorted: BTreeMap<u64, RemoteIdx>, // All nodes that have been tested, sorted by lowest value
 
@@ -158,25 +194,28 @@ pub struct Node {
 	
 	/// Bi-directional graph of all locally known nodes and the estimated distances between them
 	#[derivative(Debug = "ignore")]
-	#[serde(skip)]
+	//#[serde(skip)]
 	route_map: DiGraphMap<NodeID, u64>, 
+
 
 	/// Send Actions to the Network
 	#[derivative(Debug = "ignore")]
-	#[serde(skip)]
+	//#[serde(skip)]
 	network_action: Sender<NetAction>,
 
 	/// Event Loop Receive & Send NodeActions
 	#[derivative(Debug = "ignore")]
-	#[serde(skip)]
+	//#[serde(skip)]
 	action_receiver: Receiver<NodeAction>,
+	#[derivative(Debug = "ignore")]
+	//#[serde(skip)]
 	pub action_sender: Sender<NodeAction>,
 }
 
 impl Node {
 	/// Create New Node with specific ID
 	pub fn new(node_id: NodeID, network_event_sender: Sender<NetAction>) -> Node {
-		let (action_sender, action_receiver) = channel::bounded(20);
+		let (action_sender, action_receiver) = mpsc::channel(20);
 		Node {
 			node_id,
 			net_addr: None,
@@ -186,6 +225,7 @@ impl Node {
 			ticks: Duration::ZERO,
 			remotes: Default::default(),
 			ids: Default::default(),
+			addrs: Default::default(),
 			direct_sorted: Default::default(),
 			route_map: Default::default(),
 			network_action: network_event_sender,
@@ -195,60 +235,60 @@ impl Node {
 	}
 
 	/// Add action to Node object
-	pub fn with_action(mut self, action: NodeAction) -> Self {
-		self.action_list.push(action);
+	pub fn with_action(self, action: NodeAction) -> Self {
+		self.action_sender.try_send(action).unwrap();
 		self
 	}
 
 	pub fn remote(&self, node_idx: RemoteIdx) -> Result<&Remote, NodeError> {
 		self.remotes
 			.get(node_idx)
-			.ok_or(NodeError::InvalidNodeIndex { node_idx })
+			.ok_or(NodeError::UnknownNodeIndex { node_idx })
 	}
 	pub fn remote_mut(&mut self, node_idx: RemoteIdx) -> Result<&mut Remote, NodeError> {
 		self.remotes
 			.get_mut(node_idx)
-			.ok_or(NodeError::InvalidNodeIndex { node_idx })
+			.ok_or(NodeError::UnknownNodeIndex { node_idx })
 	}
 	pub fn index_by_node_id(&self, node_id: &NodeID) -> Result<RemoteIdx, NodeError> {
 		self.ids
-			.get_by_left(node_id)
+			.get(node_id)
 			.cloned()
-			.ok_or(NodeError::InvalidNodeID {
+			.ok_or(NodeError::UnknownNodeID {
 				node_id: node_id.clone(),
 			})
 	}
-
-	pub fn find_closest_peer(&self, remote_route_coord: &RouteCoord) -> Result<RemoteIdx, NodeError> {
-		let min_peer = self.peer_list.iter().min_by_key(|(_, &p)| {
-			let diff = p - *remote_route_coord;
-			diff.dot(&diff)
-			//println!("Dist from {:?}: {}: {}", self.node_id, self.remote(**id).unwrap().node_id, d_sq);
-			//d_sq
-		});
-		min_peer
-			.map(|(&node, _)| node)
-			.ok_or(NodeError::InsufficientPeers { required: 1 })
+	pub fn index_by_addr(&self, net_addr: &Address) -> Result<RemoteIdx, NodeError> {
+		self.addrs
+    		.get(net_addr)
+			.cloned()
+			.ok_or(NodeError::UnknownNetAddr {
+				net_addr: net_addr.clone(),
+			})
 	}
 
 	/// Runs event loop on this object
-	pub async fn run<S: DerefMut<Target=Node>>(self: S) -> Self {
+	pub async fn run<S: DerefMut<Target=Node>>(mut self: S) {
+		let node_action = &self.action_sender.clone();
+
 		//let node = self.deref_mut();
-		while let Ok(action) = self.action_receiver.recv().await {
-			let node_error = try {
+		while let Some(action) = self.action_receiver.recv().await {
+			let node_error: Result<(), NodeError> = try {
 				match action {
-					NodeAction::Bootstrap(node_id, net_addr) => {
-	
-					},
-					//NodeAction::Connect(connection) => self.handle_connection(connection),
-					NodeAction::HandleNetAction(net_action) => {
+					NodeAction::NetAction(net_action) => {
 						match net_action {
-							NetAction::Incoming(connection) => self.handle_connection(connection),
+							NetAction::Incoming(connection) => {
+								self.handle_connection(connection).await?;
+							},
 							NetAction::QueryRouteCoordResponse(node_id, route_coord) => {
 								let node_idx = self.index_by_node_id(&node_id)?;
-								self.remote(node_idx)?.action.send(RemoteAction::QueryRouteCoordResponse(route_coord)).await;
+								self.remote_mut(node_idx)?.action(node_action, RemoteAction::RouteCoordQuery(route_coord)).await?;
 							}
-							NetAction::ConnectResponse(connection) => self.handle_connection(connection),
+							NetAction::ConnectResponse(conn_resp) => {
+								if let ConnectionResponse::Established(connection) = conn_resp {
+									self.handle_connection(connection).await?;
+								}
+							},
 							_ => { log::error!("Received Invalid NetAction: {:?}", net_action) }
 						}
 					}
@@ -260,25 +300,18 @@ impl Node {
 			}
 		}
 	}
-	/// Handle Connection object from Network Implementation by creating Remote Node Thread
-	pub fn handle_connection(&mut self, connection: Connection) {
-		// Create Remote
-		let (remote_node, remote) = RemoteNode::new(connection);
 
-		// Register Remote
-		let remote_node_id = remote.node_id;
-		let node_idx = self.remotes.insert(remote);
-		self.ids.insert(remote_node_id, node_idx);
+	/// Handle Connection object by creating a new Remote object if it doesn't already exist 
+	pub async fn handle_connection(&mut self, connection: Connection) -> Result<(), NodeError> {
+		let remote = if self.addrs.contains_key(&connection.address) {
+			*self.addrs.get(&connection.address).unwrap()
+		} else {
+			self.remotes.insert(Remote::new(connection.address.clone(), None))
+		};
 
-		// Spawn Remote Task
-		task::spawn(async {
-			remote_node.run(self.action_sender).await;
-		});
-	}
-	/// Initiate handshake process and send packets when completed
-	pub fn connect(&mut self, node_id: NodeID, net_addr: net::Address) -> Result<(), NodeError> {
-		self.network_action.send(NetAction::Connect(net_addr))
-		//let (remote_node, remote) = RemoteNode::new_outgoing(node_id, net_addr);
-
+		let node_action = &self.action_sender.clone();
+		let remote = self.remote_mut(remote).unwrap();
+		remote.action(node_action, RemoteAction::HandleConnection(connection)).await?;
+		Ok(())
 	}
 }

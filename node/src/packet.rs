@@ -25,13 +25,13 @@ pub enum NodePacket {
 	/// All Packets that are not Init-type should be wrapped in session encryption
 	Session {
 		session_key: SessionKey,
-		encrypted_packet: Box<NodePacket>,
+		//encrypted_packet: Box<NodePacket>,
 	},
 	Traversal {
 		/// Place to Route Packet to
 		destination: RouteCoord,
 		/// Packet to traverse to destination node
-		session_packet: Box<NodePacket>, // Must be type Init-type, or Session
+		//session_packet: Box<NodePacket>, // Must be type Init-type, or Session
 		/// Signed & Assymetrically encrypted return location
 		origin: Option<RouteCoord>,
 	},
@@ -41,7 +41,7 @@ pub enum NodePacket {
 	/// Contains list of packets for remote to respond to
 	ConnectionInit {
 		ping_id: u128,
-		initial_packets: Vec<NodePacket>,
+		//initial_packets: Vec<NodePacket>,
 	},
 
 	/// Exchange Info with another node

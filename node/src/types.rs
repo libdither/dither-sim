@@ -3,8 +3,6 @@ use nalgebra::Point2;
 
 /// Hash uniquely identifying a node (represents the Multihash of the node's Public Key)
 pub type NodeID = u32;
-/// Number uniquely identifying a session, represents a Symmetric key
-pub type SessionID = u32;
 /// Coordinate that represents a position of a node relative to other nodes in 2D space.
 pub type RouteScalar = u64;
 

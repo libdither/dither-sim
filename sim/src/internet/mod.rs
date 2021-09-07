@@ -7,7 +7,6 @@ use std::ops::Range;
 use anyhow::Context;
 use rand::Rng;
 use serde::{Deserialize, de::DeserializeOwned};
-use smallvec::SmallVec;
 
 mod router;
 use router::NetSimRouter;
