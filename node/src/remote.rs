@@ -19,6 +19,8 @@ pub enum RemoteAction {
 
 	/// From Session Thread
 	ReceivePacket(NodePacket),
+
+	SessionError(Box<SessionError>),
 }
 
 #[derive(Error, Debug)]

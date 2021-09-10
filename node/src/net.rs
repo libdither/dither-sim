@@ -1,13 +1,14 @@
 /// Defines all the generic components of a node interacting with an internet structure.
 /// A Node should be able to work in any kind of network. simulated or not. This file provides the basic structures that any network implementation will use to interact with a Node.
 
-use tokio::{io::{AsyncRead, AsyncWrite}, net::TcpStream};
+use tokio::{net::TcpStream};
 //use futures::{AsyncBufRead, AsyncWrite};
 
 use crate::{NodeID, RouteCoord};
 
 /// Address that allows a Node to connect to another Node over a network implementation. This might be an IP address, a multiaddr, or just a number.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Archive, Serialize, Deserialize, serde::Serialize, serde::Deserialize)]
+#[archive_attr(derive(bytecheck::CheckBytes))]
 pub struct Address(Vec<u8>);
 
 /// Represents a 2-way asyncronous stream of bytes and the address used to establish the connection.

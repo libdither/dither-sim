@@ -1,5 +1,3 @@
-use vpsearch::MetricSpace;
-use nalgebra::Point2;
 
 /// Hash uniquely identifying a node (represents the Multihash of the node's Public Key)
 pub type NodeID = u32;
