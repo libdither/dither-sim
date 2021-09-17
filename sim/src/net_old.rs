@@ -1,47 +1,61 @@
 //#![allow(dead_code)]
 
-use std::{collections::HashMap, fmt::Debug, fs::File, hash::Hash, io::{BufRead, BufReader, Write}, net::IpAddr};
+use std::{collections::HashMap, fmt::Debug, fs::File, hash::Hash, io::{BufRead, BufReader, Write}, sync::Arc};
 use std::any::Any;
 use std::ops::Range;
 
 use anyhow::Context;
+use nalgebra::Vector2;
+use petgraph::graphmap::GraphMap;
 use rand::Rng;
 use serde::{Deserialize, de::DeserializeOwned};
 
 mod router;
 use router::NetSimRouter;
 
-use node::Node;
-use tokio::sync;
+use node::{Node, RouteCoord};
 
 /// All Dither Nodes and Routing Nodes will be organized on a field
 /// Internet Simulation Field Dimensions (Measured in Nanolightseconds): 64ms x 26ms
 pub const FIELD_DIMENSIONS: (Range<i32>, Range<i32>) = (-320000..320000, -130000..130000);
 
 pub type FieldPosition = Vector2<i32>;
-pub type InternalLatency = u32;
+pub type Latency = u64;
 
+/// Internet node type, has direct peer-to-peer connections and maintains a routing table to pick which direction a packet goes down.
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub struct InternetNode {
-	position: FieldPosition, // Position on Internet Simulation Field
-	internal_latency: InternalLatency, // Measured In Nanoseconds
-	#[derivative(Debug="crate::node::node_id_formatter")]
-	node: Option<Node>, // Whether this node supports the Dither protocol
+struct NetNode {
+	/// Position of this Node in the NetSim Simulation Field
+	position: FieldPosition,
+	/// Internal latency of this node's internal network and packet processing (Measure in nanoseconds)
+	internal_latency: Latency,
+	/// Whether this node contains the Dither Core Service
+	node: Option<Node>,
+	/// Connections to other nodes, set by network
+	pub connections: Vec<Arc<NetWire>>,
 }
-impl InternetNode {
-	pub fn new(position: FieldPosition, internal_latency: InternalLatency) -> Self {
+impl NetNode {
+	pub fn new(position: FieldPosition, internal_latency: Latency) -> Self {
 		Self {
 			position,
 			internal_latency,
 			node: None,
+			connections: Vec::default(),
 		}
 	}
 }
 
-pub enum InternetEvent {
-	AddNode(InternetNode),
+/// Internet Wire Type, provides delayed streams between NetNodes, set dynamically by NetSim object.
+struct NetWire {
+	latency: Latency,
+}
 
+/// Define actions that can be run by the simulation UI
+#[derive(Clone, Debug)]
+pub enum InternetEvent {
+	/// Add node to Network
+	AddNode(InternetNode),
 }
 
 #[derive(Error, Debug)]
@@ -53,48 +67,21 @@ pub enum InternetError {
 }
 
 #[derive(Debug)]
-pub enum NetSimRequest<CN: CustomNode + ?Sized> {
-	RouteCoordDHTRead(CN::CustomNodeUUID),
-	RouteCoordDHTWrite(CN::CustomNodeUUID, RouteCoord),
-	RouteCoordDHTReadResponse(CN::CustomNodeUUID, Option<RouteCoord>),
-	RouteCoordDHTWriteResponse(Option<(CN::CustomNodeUUID, RouteCoord)>),
+pub enum NetSimRequest {
+	RouteCoordDHTRead(node::NodeID),
+	RouteCoordDHTWrite(node::NodeID, RouteCoord),
+	RouteCoordDHTReadResponse(node::NodeID, Option<RouteCoord>),
+	RouteCoordDHTWriteResponse(Option<(node::NodeID, RouteCoord)>),
 	RandomNodeRequest(u32),
-	RandomNodeResponse(u32, Option<CN::CustomNodeUUID>),
-}
-
-#[derive(Default, Debug)]
-pub struct NetSimPacket<CN: CustomNode + ?Sized> {
-	pub dest_addr: NetAddr,
-	pub data: Vec<u8>,
-	pub src_addr: NetAddr,
-	pub request: Option<NetSimRequest<CN>>,
-}
-impl<CN: CustomNode> NetSimPacket<CN> {
-	pub fn gen_request(dest_addr: NetAddr, request: NetSimRequest<CN>) -> Self { Self { dest_addr, data: vec![], src_addr: dest_addr, request: Some(request) } }
-}
-
-pub type NetAddr = u128;
-pub type NetSimPacketVec<CN> = SmallVec<[NetSimPacket<CN>; 32]>;
-
-pub trait CustomNode: Debug + Default {
-	type CustomNodeAction;
-	type CustomNodeUUID: Debug + Hash + Eq + Clone + serde::Serialize + DeserializeOwned;
-	fn net_addr(&self) -> NetAddr;
-	fn unique_id(&self) -> Self::CustomNodeUUID;
-	fn tick(&mut self, incoming: NetSimPacketVec<Self>) -> NetSimPacketVec<Self>;
-	fn action(&mut self, action: Self::CustomNodeAction);
-	fn as_any(&self) -> &dyn Any;
-	fn set_deus_ex_data(&mut self, data: Option<RouteCoord>);
+	RandomNodeResponse(u32, Option<node::NodeID>),
 }
 
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct NetSim<CN: CustomNode> {
-	pub nodes: HashMap<NetAddr, CN>,
-	pub router: NetSimRouter<CN>,
-	route_coord_dht: HashMap<CN::CustomNodeUUID, RouteCoord>,
+pub struct NetSim {
+	route_coord_dht: HashMap<node::NodeID, RouteCoord>,
 }
-impl<CN: CustomNode> NetSim<CN> {
+impl NetSim {
 	pub fn new() -> NetSim<CN> {
 		NetSim {
 			nodes: HashMap::new(),
