@@ -9,8 +9,10 @@ edition = "2018"
 [workspace]
 members = [
 	"node", # Transporter-Agnostic Dither Implementation
-	"sim", # Internet Simulation Module
-	"cli" # CLI for Internet Sim Module, Includes Encryption
+	
+	# Internet Simulation Modules
+	"sim/cli"
+	"sim/gui"
 ]
 
 [dependencies]

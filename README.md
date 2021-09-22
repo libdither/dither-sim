@@ -1,5 +1,5 @@
-# dbr-sim
-Distanced-Based Routing Simulation program for dither.
+# Dither Sim
+Simulation program testing various aspects of dither.
 
 This project was a part of a research paper: https://github.com/zyansheep/routing-research
 
