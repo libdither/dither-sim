@@ -15,8 +15,8 @@ use std::ops::Range;
 use anyhow::Context;
 use nalgebra::Vector2;
 
+use netsim_embed::Machine;
 use serde::Deserialize;
-
 
 use node::{Node, RouteCoord, net};
 
@@ -46,6 +46,9 @@ impl InternetNode {
 			node: None,
 		}
 	}
+	pub fn spawn(netsim: &mut NetSim) {
+		netsim.spawn_machine()
+	}
 }
 
 #[derive(Error, Debug)]
@@ -57,9 +60,12 @@ pub enum InternetError {
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Derivative, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct Internet {
-	netsim: netsim_embed::Netsim<>,
+	#[derivative(Debug="ignore")]
+	#[serde(skip)]
+	netsim: netsim_embed::Netsim<net::NetAction, net::NetAction>,
 	route_coord_dht: HashMap<node::NodeID, RouteCoord>,
 }
 impl Internet {
@@ -71,9 +77,10 @@ impl Internet {
 	}
 }
 impl Internet {
-	pub fn spawn(position: FieldPosition, internal_latency: Latency) {
-		
+	pub fn add_node(position: FieldPosition, internal_latency: Latency) -> MachineId {
 		let machine = netsim_embed::Machine::new(id, plug, cmd).await;
+	}
+	pub fn remove_node(machine_id: MachineId) {
 		
 	}
 	pub fn save(&self, filepath: &str) -> Result<(), InternetError> {
