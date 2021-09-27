@@ -1,40 +1,15 @@
 [package]
-name = "node"
+name = "dither-core"
 version = "0.1.0"
+authors = ["zyansheep <zyansheep@github.com>"]
 edition = "2018"
+description = "Wraps Node API with platform-specific features"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# Async
-tokio = { version = "1.11.0", features = ["full"] }
-tokio-stream = "0.1.7"
-futures = "0.3.17"
-
-# Data
+env_logger = "0.9.0"
+libp2p = "0.39.1"
 log = "0.4.14"
-derivative = "2.2.0"
-nalgebra = { version = "0.29.0", features = ["serde-serialize"] }
-petgraph = { version = "0.6.0", features = ["graphmap", "serde-1"] }
-slotmap = { version = "1.0.6", features = ["serde"] }
-smallvec = { version = "1.6.1", features = ["serde"] }
-bimap = { version = "0.6.1", features = ["serde"] }
-vpsearch = "2.0.1"
-thiserror = "1.0.29"
-anyhow = "1.0.43"
-
-# Packet Serialization
-rkyv = { version = "0.7.16", features = ["validation"] } # Zero-Copy Serialization
-bytecheck = "0.6.5"
-tokio-util = { version = "0.6.8", features = ["codec"] }
-bytes = "1.1.0"
-
-# Storage Serialization
-serde = "1.0.130"
-
-rand = "0.8.4"
-futures-core = "0.3.17"
-
-[lib]
-name = "node"
-path = "src/lib.rs"
+node = { path = "../node" }
+tokio = { version = "1.12.0", features = ["full"] }

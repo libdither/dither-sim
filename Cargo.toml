@@ -9,7 +9,7 @@ edition = "2018"
 [workspace]
 members = [
 	"node", # Transporter-Agnostic Dither Implementation
-	
+	"dither-core",
 	# Internet Simulation Modules
 	"sim",
 	"sim/cli",
