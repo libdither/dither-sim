@@ -1,21 +1,20 @@
 [package]
 name = "gui"
 version = "0.1.0"
-authors = ["zyansheep <zyansheep@github.com>"]
+authors = ["zyansheep <zyansheep@protonmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sim = { path = ".." }
-anyhow = "1.0.41"
-iced = { git = "https://github.com/zyansheep/iced", features = ["canvas"] }
+anyhow = "1.0.42"
+iced = { git = "https://github.com/hecrj/iced", features = ["canvas"] }
 iced_aw = { git = "https://github.com/zyansheep/iced_aw", features = ["tabs"] }
-env_logger = "0.8.4"
+env_logger = "0.9.0"
 rand = "0.8.4"
-nalgebra = "0.27.1"
+nalgebra = "0.29.0"
 derivative = "2.2.0"
-
-[dev-dependencies]
-iced = { git = "https://github.com/zyansheep/iced", features = ["dynamic"] }
-
+slotmap = "1.0.5"
+tokio = "1.8.1"
+futures = "0.3.16"
+serde = "1.0.127"
