@@ -11,7 +11,8 @@ members = [
 	"node", # Transporter-Agnostic Dither Implementation
 	
 	# Internet Simulation Modules
-	"sim/cli"
+	"sim",
+	"sim/cli",
 	"sim/gui"
 ]
 
@@ -25,9 +26,9 @@ iced = { git = "https://github.com/zyansheep/iced", features = ["canvas"] }
 #iced_native = { git = "https://github.com/hecrj/iced", branch = "feature/dynamic-linking", package="iced_dynamic" }
 #iced_graphics = { git = "https://github.com/hecrj/iced", branch = "feature/dynamic-linking", package="iced_dynamic" }
 iced_aw = { git = "https://github.com/zyansheep/iced_aw", features = ["tabs"] }
-env_logger = "0.8.4"
+env_logger = "0.9.0"
 rand = "0.8.4"
-nalgebra = "0.27.1"
+nalgebra = "0.29.0"
 derivative = "2.2.0"
 slotmap = "1.0.5"
 tokio = "1.8.1"
