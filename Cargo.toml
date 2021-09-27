@@ -1,7 +1,7 @@
 [package]
 name = "dbr-sim"
 version = "0.1.0"
-authors = ["Zyansheep <zyansheep@gmail.com>"]
+authors = ["Zyansheep <zyansheep@protonmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,31 +9,9 @@ edition = "2018"
 [workspace]
 members = [
 	"node", # Transporter-Agnostic Dither Implementation
-	"dither-core",
-	# Internet Simulation Modules
-	"sim",
-	"sim/cli",
-	"sim/gui"
+	"dither-core", # Cross-Platform Network Implementation of Dither API
+
+	"cli",
+	"gui"
 ]
 
-[dependencies]
-sim = { path = "sim" }
-anyhow = "1.0.42"
-iced = { git = "https://github.com/zyansheep/iced", features = ["canvas"] }
-#iced_native = { git = "https://github.com/zyansheep/iced" }
-#iced_graphics = { git = "https://github.com/zyansheep/iced" }
-#iced = { git = "https://github.com/hecrj/iced", branch = "feature/dynamic-linking", package="iced_dynamic" }
-#iced_native = { git = "https://github.com/hecrj/iced", branch = "feature/dynamic-linking", package="iced_dynamic" }
-#iced_graphics = { git = "https://github.com/hecrj/iced", branch = "feature/dynamic-linking", package="iced_dynamic" }
-iced_aw = { git = "https://github.com/zyansheep/iced_aw", features = ["tabs"] }
-env_logger = "0.9.0"
-rand = "0.8.4"
-nalgebra = "0.29.0"
-derivative = "2.2.0"
-slotmap = "1.0.5"
-tokio = "1.8.1"
-futures = "0.3.16"
-serde = "1.0.127"
-
-[dev-dependencies]
-iced = { git = "https://github.com/zyansheep/iced", features = ["dynamic"] }
