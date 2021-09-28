@@ -1,17 +1,9 @@
-[package]
-name = "dbr-sim"
-version = "0.1.0"
-authors = ["Zyansheep <zyansheep@protonmail.com>"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [workspace]
 members = [
 	"node", # Transporter-Agnostic Dither Implementation
-	"dither-core", # Cross-Platform Network Implementation of Dither API
+	"core", # Cross-Platform Network Implementation of Dither API
 
-	"cli",
-	"gui"
+	"sim",
+	"sim/cli",
+	"sim/gui"
 ]
-

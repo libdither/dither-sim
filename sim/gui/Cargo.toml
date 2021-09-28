@@ -8,8 +8,8 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.42"
-iced = { git = "https://github.com/hecrj/iced", features = ["canvas"] }
-iced_aw = { git = "https://github.com/zyansheep/iced_aw", features = ["tabs"] }
+iced = { version = "*", features = ["canvas"] }
+iced_aw = { git = "https://github.com/iced-rs/iced_aw", features = ["tabs"] }
 env_logger = "0.9.0"
 rand = "0.8.4"
 nalgebra = "0.29.0"

@@ -37,7 +37,7 @@
 				vulkan-validation-layers
 				fontconfig
 				freetype
-				
+				protobuf
 			];
 			hardeningDisable = [ "fortify" ];
 			NIX_CFLAGS_LINK = "-fuse-ld=lld";
