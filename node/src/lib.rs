@@ -193,10 +193,10 @@ pub struct Node {
 
 	//pub peer_list: BiHashMap<RemoteIdx, RouteCoord>, // Used for routing and peer management, peer count should be no more than TARGET_PEER_COUNT
 	
-	/// Bi-directional graph of all locally known nodes and the estimated distances between them
+	/* /// Bi-directional graph of all locally known nodes and the estimated distances between them
 	#[derivative(Debug = "ignore")]
 	//#[serde(skip)]
-	route_map: DiGraphMap<NodeID, u64>, 
+	route_map: DiGraphMap<NodeID, u64>,  */
 
 
 	/// Send Actions to the Network
@@ -228,7 +228,7 @@ impl Node {
 			ids: Default::default(),
 			addrs: Default::default(),
 			direct_sorted: Default::default(),
-			route_map: Default::default(),
+			//route_map: Default::default(),
 			network_action: network_event_sender,
 			action_receiver,
 			action_sender,
@@ -314,5 +314,12 @@ impl Node {
 		let remote = self.remote_mut(remote).unwrap();
 		remote.action(node_action, RemoteAction::HandleConnection(connection)).await?;
 		Ok(())
+	}
+
+	pub fn spawn(mut self) -> JoinHandle<Self> {
+		tokio::spawn(async move {
+			Self::run(&mut self).await;
+			self
+		})
 	}
 }

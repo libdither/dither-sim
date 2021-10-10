@@ -1,6 +1,6 @@
 
-/// Hash uniquely identifying a node (represents the Multihash of the node's Public Key)
-pub type NodeID = u32;
+/// Multihash that uniquely identifying a node (represents the Multihash of the node's Public Key)
+pub type NodeID = Vec<u8>;
 /// Coordinate that represents a position of a node relative to other nodes in 2D space.
 pub type RouteScalar = u64;
 
