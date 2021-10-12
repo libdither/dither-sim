@@ -20,7 +20,7 @@
 	in rec {
 		# `nix develop`
 		devShell = mkShell {
-			nativeBuildInputs = with pkgs; [ pkg-config cmake rust-toolchain ];
+			nativeBuildInputs = with pkgs; [ pkg-config cmake rust-toolchain cargo-edit ];
 			buildInputs = with pkgs; [
 				llvmPkgs.bintools
 				#stdenv.cc.cc.lib

@@ -2,7 +2,7 @@
 
 use std::{fs, io::BufReader};
 
-use sim::{self, DEFAULT_CACHE_FILE, NetSim, Node};
+use sim::{self, DEFAULT_CACHE_FILE, Internet, Node};
 use rand::{rngs::SmallRng, SeedableRng};
 mod cli;
 

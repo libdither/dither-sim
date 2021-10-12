@@ -7,3 +7,6 @@ members = [
 	"sim/cli",
 	"sim/gui"
 ]
+
+[patch.crates-io]
+netsim-embed = { path = "vendor/netsim-embed" }

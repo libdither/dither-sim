@@ -15,7 +15,7 @@ use std::ops::Range;
 use anyhow::Context;
 use nalgebra::Vector2;
 
-use netsim_embed::Machine;
+use netsim_embed::{Machine, MachineId};
 use serde::Deserialize;
 
 use node::{Node, RouteCoord, net};
@@ -46,8 +46,13 @@ impl InternetNode {
 			node: None,
 		}
 	}
-	pub fn spawn(netsim: &mut NetSim) {
-		netsim.spawn_machine()
+	pub fn spawn(internet: &mut Internet) {
+
+		let machine = Machine {
+			id: MachineId(internet.lease_id()),
+    
+			
+		}
 	}
 }
 
@@ -75,10 +80,11 @@ impl Internet {
 			route_coord_dht: HashMap::new(),
 		}
 	}
-}
-impl Internet {
+	pub fn lease_id(&self) -> usize {
+		self.netsim.machines().len()
+	}
 	pub fn add_node(position: FieldPosition, internal_latency: Latency) -> MachineId {
-		let machine = netsim_embed::Machine::new(id, plug, cmd).await;
+		
 	}
 	pub fn remove_node(machine_id: MachineId) {
 		
