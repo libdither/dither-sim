@@ -5,7 +5,8 @@ members = [
 
 	"sim",
 	"sim/cli",
-	"sim/gui"
+	"sim/gui",
+	"sim/device",
 ]
 
 [patch.crates-io]

@@ -1,5 +1,5 @@
 [package]
-name = "dither-core"
+name = "core"
 version = "0.1.0"
 authors = ["zyansheep <zyansheep@github.com>"]
 edition = "2018"
@@ -15,3 +15,11 @@ libp2p = { version = "0.39.1", features = [ "tcp-tokio" ] }
 log = "0.4.14"
 node = { path = "../node" }
 tokio = { version = "1.12.0", features = ["full"] }
+
+[lib]
+name = "libdither"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dither"
+path = "src/bin.rs"

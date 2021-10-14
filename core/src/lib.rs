@@ -1,4 +1,3 @@
-
 use futures::StreamExt;
 use libp2p::{Multiaddr, NetworkBehaviour, PeerId, Transport, core::{transport::ListenerEvent, upgrade}, floodsub::{self, Floodsub, FloodsubEvent}, identity, mdns::{Mdns, MdnsEvent}, mplex, noise, swarm::{NetworkBehaviourEventProcess, SwarmBuilder, SwarmEvent}, tcp::TokioTcpConfig};
 use std::{error::Error, net::Ipv4Addr};
@@ -6,10 +5,12 @@ use tokio::{io::{self, AsyncBufReadExt}, sync::mpsc};
 
 use node::{Node, net::NetAction};
 
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-	env_logger::init();
+pub struct Core {
+	keypair: Keypair,
+	pub peer_id: PeerId,
+}
 
+async fn init() -> anyhow::Result<()> {
 	// Create a random PeerId
 	let id_keys = identity::Keypair::generate_ed25519();
 	let peer_id = PeerId::from(id_keys.public());
@@ -64,9 +65,6 @@ async fn main() -> Result<(), anyhow::Error> {
 	} else {
 		println!("Node Exited with Error");
 	}
-		
-		
 	
-
 	Ok(())
 }

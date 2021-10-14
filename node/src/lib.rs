@@ -35,7 +35,6 @@ mod types;
 use remote::{RemoteNode, RemoteAction, RemoteNodeError};
 pub use types::{NodeID, RouteCoord, RouteScalar};
 
-use petgraph::graphmap::DiGraphMap;
 use slotmap::{SlotMap, new_key_type};
 
 new_key_type! { pub struct RemoteIdx; }

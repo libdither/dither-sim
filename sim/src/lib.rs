@@ -9,13 +9,13 @@ extern crate derivative;
 extern crate bitflags; */
 //#![allow(dead_code)]
 
-use std::{collections::HashMap, fmt::Debug, fs::File, io::{BufReader, Write}};
+use std::{collections::HashMap, fmt::{Debug, Display}, fs::File, io::{BufReader, Write}};
 use std::ops::Range;
 
 use anyhow::Context;
 use nalgebra::Vector2;
 
-use netsim_embed::{Machine, MachineId};
+use netsim_embed::{Machine, MachineId, Netsim};
 use serde::Deserialize;
 
 use node::{Node, RouteCoord, net};
@@ -35,26 +35,8 @@ struct InternetNode {
 	position: FieldPosition,
 	/// Internal latency of this node's internal network and packet processing (Measure in nanoseconds)
 	internal_latency: Latency,
-	/// Whether this node contains the Dither Core Service
-	node: Option<Node>,
 }
-impl InternetNode {
-	pub fn new(position: FieldPosition, internal_latency: Latency) -> Self {
-		Self {
-			position,
-			internal_latency,
-			node: None,
-		}
-	}
-	pub fn spawn(internet: &mut Internet) {
 
-		let machine = Machine {
-			id: MachineId(internet.lease_id()),
-    
-			
-		}
-	}
-}
 
 #[derive(Error, Debug)]
 pub enum InternetError {
@@ -64,28 +46,27 @@ pub enum InternetError {
 	Other(#[from] anyhow::Error),
 }
 
-
 #[derive(Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
 pub struct Internet {
 	#[derivative(Debug="ignore")]
 	#[serde(skip)]
-	netsim: netsim_embed::Netsim<net::NetAction, net::NetAction>,
+	netsim: Netsim<net::NetAction, net::NetAction>,
 	route_coord_dht: HashMap<node::NodeID, RouteCoord>,
 }
 impl Internet {
 	pub fn new() -> Internet {
 		Internet {
-			netsim: NetSim::new(),
+			netsim: Default::default(),
 			route_coord_dht: HashMap::new(),
 		}
 	}
 	pub fn lease_id(&self) -> usize {
 		self.netsim.machines().len()
 	}
-	pub fn add_node(position: FieldPosition, internal_latency: Latency) -> MachineId {
-		
-	}
+	/* pub fn add_node(position: FieldPosition, internal_latency: Latency) -> MachineId {
+		self.netsim.
+	} */
 	pub fn remove_node(machine_id: MachineId) {
 		
 	}
