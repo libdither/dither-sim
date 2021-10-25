@@ -9,20 +9,22 @@ extern crate derivative;
 extern crate bitflags; */
 //#![allow(dead_code)]
 
-use std::{collections::HashMap, fmt::{Debug, Display}, fs::File, io::{BufReader, Write}};
+use std::{collections::HashMap, fmt::{Debug}, fs::File, io::{BufReader, Write}};
 use std::ops::Range;
 
 use anyhow::Context;
 use nalgebra::Vector2;
 
-use netsim_embed::{Machine, MachineId, Netsim};
+use netsim_embed::{Netsim};
 use serde::Deserialize;
 
-use node::{Node, RouteCoord, net};
+use device::{DeviceCommand, DeviceEvent};
+use node::{RouteCoord, net};
 
 /// All Dither Nodes and Routing Nodes will be organized on a field
 /// Internet Simulation Field Dimensions (Measured in Nanolightseconds): 64ms x 26ms
 pub const FIELD_DIMENSIONS: (Range<i32>, Range<i32>) = (-320000..320000, -130000..130000);
+pub const DEFAULT_CACHE_FILE: &str = "./net.cache";
 
 pub type FieldPosition = Vector2<i32>;
 pub type Latency = u64;
@@ -51,24 +53,18 @@ pub enum InternetError {
 pub struct Internet {
 	#[derivative(Debug="ignore")]
 	#[serde(skip)]
-	netsim: Netsim<net::NetAction, net::NetAction>,
-	route_coord_dht: HashMap<node::NodeID, RouteCoord>,
+	pub netsim: Netsim<DeviceCommand, DeviceEvent>,
+	pub route_coord_dht: HashMap<node::NodeID, RouteCoord>,
 }
 impl Internet {
 	pub fn new() -> Internet {
 		Internet {
-			netsim: Default::default(),
+			netsim: Netsim::new(),
 			route_coord_dht: HashMap::new(),
 		}
 	}
 	pub fn lease_id(&self) -> usize {
 		self.netsim.machines().len()
-	}
-	/* pub fn add_node(position: FieldPosition, internal_latency: Latency) -> MachineId {
-		self.netsim.
-	} */
-	pub fn remove_node(machine_id: MachineId) {
-		
 	}
 	pub fn save(&self, filepath: &str) -> Result<(), InternetError> {
 		let mut file = File::create(filepath).context("failed to create file (check perms) at {}")?;

@@ -30,12 +30,9 @@ bytecheck = "0.6.5"
 tokio-util = { version = "0.6.8", features = ["codec"] }
 bytes = "1.1.0"
 
-# Storage Serialization
-serde = "1.0.130"
-
 rand = "0.8.4"
 futures-core = "0.3.17"
-libp2p = "0.39.1"
+serde = { version = "1.0.130", features = ["derive"] }
 
 [lib]
 name = "node"

@@ -2,13 +2,9 @@
 use std::{fs::File, io::{self, prelude::*}};
 use anyhow::{Context, bail, anyhow};
 
-use crate::sim::{
-	internet::{NetAddr, NetSim, CustomNode},
-	node::{self, Node, NodeAction, NodeID},
-	DEFAULT_CACHE_FILE, plot
-};
+use crate::sim::{Internet, DEFAULT_CACHE_FILE};
 
-pub fn run(internet: &mut NetSim<Node>, rng: &mut impl rand::Rng) -> anyhow::Result<()> {
+pub fn run(internet: &mut Internet, rng: &mut impl rand::Rng) -> anyhow::Result<()> {
 	let stdin = io::stdin();
 	let split_regex = fancy_regex::Regex::new(r#"((?<=")[^"]*(?=")|[^" ]+)"#)?;
 
@@ -26,7 +22,7 @@ pub fn run(internet: &mut NetSim<Node>, rng: &mut impl rand::Rng) -> anyhow::Res
 	Ok(())
 }
 
-fn parse_command(internet: &mut NetSim<Node>, input: &[&str], rng: &mut impl rand::Rng) -> anyhow::Result<()> {
+fn parse_command(internet: &mut Internet, input: &[&str], rng: &mut impl rand::Rng) -> anyhow::Result<()> {
 	match input {
 		["help"] => {
 			println!(

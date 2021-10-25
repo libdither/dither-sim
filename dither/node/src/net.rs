@@ -9,7 +9,9 @@ use crate::{NodeID, RouteCoord};
 /// Address that allows a Node to connect to another Node over a network implementation. This might be an IP address, a multiaddr, or just a number.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Archive, Serialize, Deserialize, serde::Serialize, serde::Deserialize)]
 #[archive_attr(derive(bytecheck::CheckBytes))]
-pub struct Address(Vec<u8>);
+
+#[repr(transparent)]
+pub struct Address(pub Vec<u8>);
 
 /// Represents a 2-way asyncronous stream of bytes and the address used to establish the connection.
 #[derive(Derivative)]

@@ -1,10 +1,9 @@
 [workspace]
 members = [
-	"node", # Transporter-Agnostic Dither Implementation
-	"core", # Cross-Platform Network Implementation of Dither API
+	"dither", # Cross-Platform Network Implementation of Dither API
 
 	"sim",
-	"sim/cli",
+	# "sim/cli",
 	"sim/gui",
 	"sim/device",
 ]

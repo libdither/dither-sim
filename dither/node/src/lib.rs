@@ -84,10 +84,10 @@ impl Remote {
 	}
 }
 
+
+/// Actions that can be run by an external entity (either the internet implementation or the user)
 #[derive(Debug)]
 pub enum NodeAction {
-	/// Actions that can be run by an external entity (either the internet implementation or the user)
-
 	/// Bootstrap this node onto a specific other network node, starts the self-organization process
 	Bootstrap(NodeID, net::Address),
 
@@ -96,6 +96,7 @@ pub enum NodeAction {
 	//Connect(net::Connection, NodeID, SessionType, Vec<NodePacket>),
 
 	/// Handle Incoming action (from Internet)
+	//#[serde(skip)]
 	NetAction(net::NetAction),
 
 	UpdateRemote(NodeID, Option<RouteCoord>, usize, u64),

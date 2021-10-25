@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.42"
-iced = { version = "*", features = ["canvas"] }
+iced = { version = "0.3.0", features = ["canvas"] }
 iced_aw = { git = "https://github.com/iced-rs/iced_aw", features = ["tabs"] }
 env_logger = "0.9.0"
 rand = "0.8.4"
@@ -18,3 +18,5 @@ slotmap = "1.0.5"
 tokio = "1.8.1"
 futures = "0.3.16"
 serde = "1.0.127"
+sim = { path = ".." }
+log = "0.4.14"

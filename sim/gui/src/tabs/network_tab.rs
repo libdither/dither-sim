@@ -2,7 +2,7 @@ use super::{Icon, Tab};
 use iced::{button, Align, Button, Column, Container, Element, Length, Row, Text};
 use iced_aw::TabLabel;
 
-use crate::gui::network_map::{self, NetworkMap};
+use crate::network_map::{self, NetworkMap};
 
 #[derive(Debug, Clone)]
 pub enum Message {

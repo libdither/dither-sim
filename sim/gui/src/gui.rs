@@ -1,15 +1,13 @@
+#![allow(dead_code)]
 
 // use crate::graph::Graph;
 pub use iced::Settings;
-use iced::{Align, Application, Button, Clipboard, Column, Command, Container, Element, Row, Text, button, executor};
+use iced::{Align, Application, Button, Column, Command, Clipboard, Container, Element, Row, Text, button, executor};
 use iced::Checkbox;
 
-use sim::{internet::NetSim, node::Node};
+use sim::Internet;
 
-pub mod network_map;
-mod tabs;
-
-use tabs::TabBar;
+use crate::tabs::{self, TabBar};
 
 #[derive(Default)]
 pub struct TopBar {
@@ -18,7 +16,7 @@ pub struct TopBar {
 }
 
 pub struct NetSimApp {
-	internet: NetSim<Node>,
+	internet: Internet,
 	tabs: TabBar,
 	top_bar: TopBar,
 	//radius: f32,
@@ -33,7 +31,7 @@ pub enum Message {
 }
 
 pub struct NetSimAppSettings {
-	pub net_sim: NetSim<Node>
+	pub net_sim: Internet,
 }
 
 impl Application for NetSimApp {
@@ -54,17 +52,18 @@ impl Application for NetSimApp {
 	}
 
 	fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
-		let rng = &mut rand::thread_rng();
+		let _rng = &mut rand::thread_rng();
 		match message {
 			Message::TabUpdate(tab_message) => self.tabs.update(tab_message),
-			Message::StepNetwork => self.internet.tick(100, rng),
+			/* Message::StepNetwork => self.internet.tick(100, rng), */
 			Message::ToggleRunning(toggle) => {
 				self.top_bar.toggle_sim = toggle;
 			}
+			_ => {},
 		}
-		if self.top_bar.toggle_sim {
+		/* if self.top_bar.toggle_sim {
 			self.internet.tick(1, rng);
-		}
+		} */
 		Command::none()
 	}
 
@@ -85,5 +84,5 @@ impl Application for NetSimApp {
 				)
 			).into()
 	}
-	fn scale_factor(&self) -> f64 { 1.0 }
+	/* fn scale_factor(&self) -> f64 { 1.0 } */
 }
