@@ -1620,6 +1620,7 @@ dependencies = [
  "futures",
  "iced",
  "iced_aw",
+ "iced_futures",
  "log",
  "nalgebra",
  "rand 0.8.4",
@@ -1627,6 +1628,7 @@ dependencies = [
  "sim",
  "slotmap 1.0.6",
  "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -1746,6 +1748,7 @@ checksum = "a89fdde2cb9c5807d23f40230297122e480428c660ad7d0373e625cd0725afa1"
 dependencies = [
  "futures",
  "log",
+ "tokio",
  "wasm-bindgen-futures",
 ]
 
@@ -3695,6 +3698,7 @@ name = "sim"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-process",
  "bincode",
  "derivative",
  "device",

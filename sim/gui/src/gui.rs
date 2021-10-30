@@ -1,37 +1,30 @@
 #![allow(dead_code)]
 
-// use crate::graph::Graph;
 pub use iced::Settings;
-use iced::{Align, Application, Button, Column, Command, Clipboard, Container, Element, Row, Text, button, executor};
-use iced::Checkbox;
+use iced::{executor, Application, Clipboard, Command, Element, Subscription};
 
-use sim::Internet;
+use sim::InternetAction;
 
-use crate::tabs::{self, TabBar};
+use crate::subscription::{self, Event};
 
-#[derive(Default)]
-pub struct TopBar {
-	step_sim: button::State,
-	toggle_sim: bool,
+mod loaded;
+mod loading;
+
+pub struct NetSimAppSettings {}
+
+pub enum NetSimApp {
+	Loading(loading::State),
+	Loaded(loaded::State),
 }
 
-pub struct NetSimApp {
-	internet: Internet,
-	tabs: TabBar,
-	top_bar: TopBar,
-	//radius: f32,
-	//slider: slider::State,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Message {
-	TabUpdate(tabs::Message),
-	StepNetwork,
-	ToggleRunning(bool),
-}
+	LoadingMessage(loading::Message),
+	LoadInternet,
 
-pub struct NetSimAppSettings {
-	pub net_sim: Internet,
+	LoadedMessage(loaded::Message),
+	InternetEvent(subscription::Event),
+	InternetAction(InternetAction),
 }
 
 impl Application for NetSimApp {
@@ -39,50 +32,96 @@ impl Application for NetSimApp {
 	type Message = Message;
 	type Flags = NetSimAppSettings;
 
-	fn new(flags: NetSimAppSettings) -> (Self, Command<Self::Message>) {
-		(NetSimApp {
-			internet: flags.net_sim,
-			tabs: TabBar::new(),
-			top_bar: TopBar::default(),
-		}, Command::none())
+	fn new(_flags: NetSimAppSettings) -> (Self, Command<Self::Message>) {
+		(
+			NetSimApp::Loading(loading::State::default()),
+			Command::none(),
+		)
 	}
 
 	fn title(&self) -> String {
 		String::from("Dither Network Simulation")
 	}
 
-	fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
-		let _rng = &mut rand::thread_rng();
-		match message {
-			Message::TabUpdate(tab_message) => self.tabs.update(tab_message),
-			/* Message::StepNetwork => self.internet.tick(100, rng), */
-			Message::ToggleRunning(toggle) => {
-				self.top_bar.toggle_sim = toggle;
+	fn subscription(&self) -> Subscription<Message> {
+		match self {
+			NetSimApp::Loading(state) => {
+				if let Some(recipe) = &state.currently_loading_recipe {
+					Subscription::from_recipe(recipe.clone()).map(|event| Message::InternetEvent(event))
+				} else {
+					Subscription::none()
+				}
 			}
-			_ => {},
+			// State is changed to Loading once Init Event triggered from Subscription
+			NetSimApp::Loaded(state) => Subscription::from_recipe(state.internet_recipe.clone())
+				.map(|event| Message::InternetEvent(event)),
 		}
-		/* if self.top_bar.toggle_sim {
-			self.internet.tick(1, rng);
-		} */
+	}
+
+	fn update(&mut self, message: Message, clipboard: &mut Clipboard) -> Command<Self::Message> {
+		match self {
+			NetSimApp::Loading(state) => {
+				log::trace!("[Loading] Received Message: {:?}", message);
+				match message {
+					Message::LoadingMessage(message) => {
+						if let Some(message) = state.process(message) {
+							self.update(message, clipboard);
+						}
+					}
+					Message::LoadInternet => {
+						println!("Loading Internet: {:?}", state.currently_loading_recipe);
+					}
+					Message::InternetEvent(event) => {
+						match event {
+							Event::Init(sender) => {
+								*self = NetSimApp::Loaded(loaded::State::new(
+									sender,
+									state.currently_loading_recipe.take().expect("There should be a recipe if internet is loaded")
+								));
+							}
+							_ => log::error!("Received internet event {:?} in Loading state, state should have already switched to Loaded", event)
+						}
+					}
+					_ => log::error!("Received Message: {:?} but inapplicable to loading state", message)
+				}
+			}
+			NetSimApp::Loaded(state) => {
+				log::trace!("[Loaded] Received Message: {:?}", message);
+				match message {
+					Message::LoadedMessage(loaded_message) => {
+						if let Some(message) = state.process(loaded_message) {
+							self.update(message, clipboard);
+						}
+					}
+					Message::InternetAction(action) => {
+						if let Err(err) = state.internet_action.try_send(InternetAction::AddNode) {
+							log::error!("Couldn't send action to simulation: {:?}", err);
+						}
+					}
+					Message::InternetEvent(event) => {
+						match event {
+							Event::Init(sender) => state.internet_action = sender,
+							Event::Event(internet_event) => {
+								match internet_event {
+									_ => { println!("Received Internet Event: {:?}", internet_event) }
+								}
+							}
+							Event::Error(err) => log::error!("Internet Sim errored: {:?}", err),
+							Event::Closed => log::info!("Internet Sim closed"),
+						}
+					}
+					_ => log::error!("Received Message: {:?} but inapplicable to loaded state", message)
+				}
+			}
+		}
 		Command::none()
 	}
 
 	fn view(&mut self) -> Element<Message> {
-		Column::new()
-			.push(
-				Row::new().push(
-					Text::new("Top Bar")
-				).push( // Step Network Button
-					Button::new(&mut self.top_bar.step_sim, Text::new("Step Network"))
-                    	.on_press(Message::StepNetwork)
-				).push( // Run Network Continuously Toggle
-					Checkbox::new(self.top_bar.toggle_sim, String::from("Run Network"), Message::ToggleRunning)
-				).spacing(10).align_items(Align::Center).padding(3)
-			).push(
-				Container::new(
-					self.tabs.view().map(move |m| Message::TabUpdate(m))
-				)
-			).into()
+		match self {
+			NetSimApp::Loading(state) => state.view().map(|msg| Message::LoadingMessage(msg)),
+			NetSimApp::Loaded(state) => state.view().map(|msg| Message::LoadedMessage(msg)),
+		}
 	}
 	/* fn scale_factor(&self) -> f64 { 1.0 } */
 }
