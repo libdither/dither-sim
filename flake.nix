@@ -9,7 +9,7 @@
 	utils.lib.eachDefaultSystem (system: let
 		overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs {
-          inherit system overlays;
+        	inherit system overlays;
         };
 		rust-toolchain = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default.override {
 			extensions = [ "rust-src" "clippy" ];
@@ -20,7 +20,17 @@
 	in rec {
 		# `nix develop`
 		devShell = mkShell {
-			nativeBuildInputs = with pkgs; [ pkg-config cmake rust-toolchain cargo-edit ];
+			nativeBuildInputs = with pkgs; [
+				pkg-config
+				cmake
+				rust-toolchain
+				cargo-edit
+				gdb
+				lldb
+				vscode-extensions.vadimcn.vscode-lldb
+
+				firejail
+			];
 			buildInputs = with pkgs; [
 				llvmPkgs.bintools
 				#stdenv.cc.cc.lib

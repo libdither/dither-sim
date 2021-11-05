@@ -1,6 +1,6 @@
 use iced::{Align, Button, Checkbox, Column, Container, Element, Row, Text, button};
 use sim::InternetAction;
-use tokio::sync::mpsc;
+use futures::channel::mpsc;
 
 use crate::{subscription::InternetRecipe, tabs::{self, TabBar}};
 

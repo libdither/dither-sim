@@ -10,6 +10,6 @@ anyhow = "1.0.44"
 env_logger = "0.9.0"
 libdither = { path = "../../dither" }
 log = "0.4.14"
-ron = "0.6.5"
+ron = "0.7.0"
 serde = { version = "1.0.130", features = ["derive"] }
-tokio = { version = "1.12.0", features = ["full"] }
+tokio = { version = "1.13.0", features = ["full"] }

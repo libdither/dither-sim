@@ -3,7 +3,8 @@ use std::pin::Pin;
 
 use iced_futures::subscription::Recipe;
 use sim::{Internet, InternetAction, InternetError, InternetEvent};
-use tokio::{sync::mpsc::{self}, task::JoinHandle};
+use futures::{StreamExt, channel::mpsc};
+use async_std::task::{self, JoinHandle};
 
 /* pub fn simulate(path: Option<&str>) -> InternetRecipe {
 	let mut internet = Internet::new();
@@ -44,7 +45,10 @@ impl<H, E> Recipe<H, E> for InternetRecipe where H: std::hash::Hasher {
 								State::Finished,
 							))
 						} else {
-							let (sender, receiver, join) = internet.run();
+							let (sender, rx) = mpsc::channel(20);
+							let (tx, receiver) = mpsc::channel(20);
+							let join = task::spawn(internet.run(tx, rx));
+							
 							Some((
 								Event::Init(sender),
 								State::Running(receiver, join)
@@ -52,7 +56,7 @@ impl<H, E> Recipe<H, E> for InternetRecipe where H: std::hash::Hasher {
 						}
 					}
 					State::Running(mut receiver, join) => {
-						let event = receiver.recv().await;
+						let event = receiver.next().await;
 						if let Some(event) = event {
 							Some((
 								Event::Event(event),
@@ -73,7 +77,6 @@ impl<H, E> Recipe<H, E> for InternetRecipe where H: std::hash::Hasher {
 				}
 			}
 	 	))
-		/* Box::pin(tokio_stream::wrappers::ReceiverStream::new()) */
 	}
 }
 

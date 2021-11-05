@@ -94,7 +94,7 @@ impl Application for NetSimApp {
 						}
 					}
 					Message::InternetAction(action) => {
-						if let Err(err) = state.internet_action.try_send(InternetAction::AddNode) {
+						if let Err(err) = state.internet_action.try_send(action) {
 							log::error!("Couldn't send action to simulation: {:?}", err);
 						}
 					}
@@ -107,7 +107,10 @@ impl Application for NetSimApp {
 								}
 							}
 							Event::Error(err) => log::error!("Internet Sim errored: {:?}", err),
-							Event::Closed => log::info!("Internet Sim closed"),
+							Event::Closed => {
+								log::info!("Internet Sim closed");
+								*self = NetSimApp::Loading(loading::State::default());
+							},
 						}
 					}
 					_ => log::error!("Received Message: {:?} but inapplicable to loaded state", message)

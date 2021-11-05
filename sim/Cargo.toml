@@ -14,20 +14,23 @@ description = "Simulation Program for Dither"
 node = { path = "../dither/node" }
 device = { path = "device" }
 
-tokio = { version = "1.11.0", features = ["full"] }
+async-process = "1.2.0"
+async-std = "1.10.0"
+futures = "0.3.17"
 
-anyhow = "1.0.43"
+anyhow = "1.0.44"
 log = "0.4.14"
 # plotters = { git = "https://github.com/zyansheep/plotters", optional = true }
 
 rand = { version = "0.8.4", features = ["small_rng"] }
-
 serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.67"
+serde_json = "1.0.68"
 bincode = "1.3.3"
 
-thiserror = "1.0.29"
+thiserror = "1.0.30"
 netsim-embed = "0.5.2"
 derivative = "2.2.0"
 nalgebra = "0.29.0"
-async-process = "1.2.0"
+netsim-embed-machine = "0.4.3"
+
+

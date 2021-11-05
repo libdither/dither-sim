@@ -14,8 +14,10 @@ mod gui;
 
 fn main() -> anyhow::Result<()> {
 	env_logger::init();
+	sim::init();
+	
 	println!("Hello, Network!");
-
+	
 	let mut settings = Settings::with_flags(NetSimAppSettings {});
 	settings.window = window::Settings {
 		resizable: false,
