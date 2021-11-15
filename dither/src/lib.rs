@@ -84,8 +84,7 @@ impl DitherCore {
 				}
 			}
 		}
-	
-
+		
 		let node = join.await.expect("Node should not error");
 		self.stored_node = Some(node);
 

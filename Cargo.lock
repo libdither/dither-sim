@@ -1263,6 +1263,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88d1c26957f23603395cd326b0ffe64124b818f4449552f960d815cfba83a53d"
 
 [[package]]
+name = "futures-delay-queue"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfb7ba4721aba38d3c78510a2cec8b9735e0c9d0def378f7395f65c4ddaf66af"
+dependencies = [
+ "async-std",
+ "futures-intrusive",
+ "futures-timer",
+ "parking_lot",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "futures-executor"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1272,6 +1285,17 @@ dependencies = [
  "futures-task",
  "futures-util",
  "num_cpus",
+]
+
+[[package]]
+name = "futures-intrusive"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62007592ac46aa7c2b6416f7deb9a8a8f63a01e0f1d6e1787d5630170db2b63e"
+dependencies = [
+ "futures-core",
+ "lock_api",
+ "parking_lot",
 ]
 
 [[package]]
@@ -3808,17 +3832,21 @@ name = "sim"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-global-executor",
  "async-process",
  "async-std",
  "bincode",
  "derivative",
  "device",
  "futures",
+ "futures-delay-queue",
+ "futures-intrusive",
  "log",
  "nalgebra",
  "netsim-embed",
  "netsim-embed-machine 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "node",
+ "petgraph 0.6.0",
  "rand 0.8.4",
  "serde",
  "serde_json",

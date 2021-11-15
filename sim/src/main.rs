@@ -12,21 +12,20 @@ mod internet;
 
 use futures::channel::mpsc;
 
-use internet::{Internet, InternetAction, InternetEvent, InternetError};
+use internet::{Internet, InternetAction, InternetEvent, };
 
 
 fn main() {
-	// Create channel for sender thread
-	let (action_sender, action_receiver) = mpsc::channel::<InternetAction>(20);
-	let (event_sender, event_receiver) = mpsc::channel::<InternetEvent>(20);
 
 	// Check if necessary kernel features are available
 	netsim_embed::unshare_user().expect("netsim: User namespaces are not enabled");
 	netsim_embed::Namespace::unshare().expect("netsim: network namespaces are not enabled");
 	netsim_embed_machine::iface::Iface::new().expect("netsim: tun adapters not supported");
 	
-	let internet = Internet::new();
-	netsim_embed::run(internet.run(event_sender, action_receiver));
+	netsim_embed::run(async {
+		let (internet, _event_receiver, _action_sender) = Internet::new();
+		internet.run().await;
+	});
 
 	/* let action_parsing_thread = thread::spawn(|| {
 		let stdin = std::io::stdin();

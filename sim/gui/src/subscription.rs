@@ -38,17 +38,14 @@ impl<H, E> Recipe<H, E> for InternetRecipe where H: std::hash::Hasher {
 			move |state| async move {
 				match state {
 					State::Initialize(path) => {
-						let mut internet = Internet::new();
-						if let Err(err ) = if let Some(path) = path { internet.load(&path) } else { Ok(()) } {
+						let (internet, receiver, sender) = Internet::new();
+						if let Err(err ) = if let Some(_path) = path { unimplemented!() /* internet.load(&path) */ } else { Ok(()) } {
 							Some((
 								Event::Error(err),
 								State::Finished,
 							))
 						} else {
-							let (sender, rx) = mpsc::channel(20);
-							let (tx, receiver) = mpsc::channel(20);
-							let join = task::spawn(internet.run(tx, rx));
-							
+							let join = task::spawn(internet.run());
 							Some((
 								Event::Init(sender),
 								State::Running(receiver, join)

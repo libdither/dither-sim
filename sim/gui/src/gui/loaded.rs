@@ -1,5 +1,5 @@
 use iced::{Align, Button, Checkbox, Column, Container, Element, Row, Text, button};
-use sim::InternetAction;
+use sim::{FieldPosition, InternetAction};
 use futures::channel::mpsc;
 
 use crate::{subscription::InternetRecipe, tabs::{self, TabBar}};
@@ -45,7 +45,7 @@ impl State {
 				None
 			}
 			Message::AddNode => {
-				Some(super::Message::InternetAction(InternetAction::AddNode))
+				Some(super::Message::InternetAction(InternetAction::AddMachine(FieldPosition::new(0,0))))
 			}
 		}
 	}

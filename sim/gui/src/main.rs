@@ -17,13 +17,15 @@ fn main() -> anyhow::Result<()> {
 	sim::init();
 	
 	println!("Hello, Network!");
-	
+
 	let mut settings = Settings::with_flags(NetSimAppSettings {});
 	settings.window = window::Settings {
 		resizable: false,
 		..Default::default()
 	};
 	NetSimApp::run(settings)?;
+
+	println!("Goodbye, Network.");
 
 	Ok(())
 }
