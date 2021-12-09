@@ -1707,6 +1707,7 @@ dependencies = [
  "iced_futures",
  "log",
  "nalgebra",
+ "petgraph 0.6.0",
  "rand 0.8.4",
  "serde",
  "sim",
@@ -2755,6 +2756,7 @@ dependencies = [
  "futures",
  "libpacket",
  "rand 0.8.4",
+ "serde",
  "thiserror",
 ]
 

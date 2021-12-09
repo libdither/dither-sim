@@ -45,8 +45,12 @@ impl State {
 				None
 			}
 			Message::AddNode => {
+				
 				Some(super::Message::InternetAction(InternetAction::AddMachine(FieldPosition::new(0,0))))
 			}
+			/* Message::AddNetwork => {
+				Some(super::Message::InternetAction(InternetAction::AddNetwork(FieldPosition::new(0,0))))
+			} */
 		}
 	}
 	pub fn view(&mut self) -> Element<Message> {

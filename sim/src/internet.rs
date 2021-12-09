@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use std::{collections::HashMap, fmt::{Debug}, fs::File, io::{BufReader, Write}, time::Duration};
+use std::{collections::HashMap, fmt::{Debug}, fs::File, io::{BufReader, Write}, net::Ipv4Addr, time::Duration};
 use std::ops::Range;
 
 use anyhow::Context;
@@ -10,15 +10,16 @@ use petgraph::{graph::NodeIndex, Graph};
 use netsim_embed::{Ipv4Range, Machine, MachineId, Netsim, Network};
 use serde::Deserialize;
 
-use device::{DeviceCommand, DeviceEvent};
-use node::{RouteCoord, net};
+use device::{Address, DeviceCommand, DeviceEvent};
+use node::{NodeID, RouteCoord, net};
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream};
 
 mod netsim_ext;
 mod internet_node;
 use netsim_ext::*;
 
-pub use self::internet_node::{FieldPosition, InternetMachine, InternetNode};
+use self::internet_node::{Latency, MachineInfo, NetworkInfo, NodeInfo};
+pub use self::internet_node::{FieldPosition, InternetMachine, InternetNode, NodeType};
 
 /// All Dither Nodes and Routing Nodes will be organized on a field
 /// Internet Simulation Field Dimensions (Measured in Nanolightseconds): 64ms x 26ms
@@ -31,16 +32,24 @@ pub const MAX_NETWORKS: u16 = u16::MAX;
 pub enum InternetAction {
 	AddMachine(FieldPosition),
 	AddNetwork(FieldPosition),
+	GetNodeInfo(usize), // Get info about node
+	GetMachineInfo(usize), // Get info about machine
+	GetNetworkInfo(usize), // Get info about network
+	SendMachineAction(usize),
+
 	SetPosition(usize),
 	DeviceCommand(usize, DeviceCommand),
 
 	// From Devices
 	DeviceEvent(usize, DeviceEvent)
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum InternetEvent {
-	AddMachineResp(usize),
-	AddNetworkResp(usize),
+	NewMachine(usize),
+	NewNetwork(usize),
+	NodeInfo(NodeInfo),
+	MachineInfo(MachineInfo),
+	NetworkInfo(NetworkInfo),
 
 	Error(String),
 }
@@ -92,7 +101,7 @@ impl Internet {
 				match action {
 					InternetAction::AddNetwork(position) => {
 						let idx: NodeIndex = self.spawn_network(position).await?;
-						self.send_event(InternetEvent::AddNetworkResp(idx.index()));
+						self.send_event(InternetEvent::NewMachine(idx.index()));
 						log::debug!("Added Network Node: {:?}", idx);
 					}
 					InternetAction::AddMachine(position) => {

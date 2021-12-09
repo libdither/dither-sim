@@ -1,16 +1,67 @@
-use super::{Icon, Tab};
-use iced::{button, Align, Button, Column, Container, Element, Length, Row, Text};
-use iced_aw::TabLabel;
+use std::net::Ipv4Addr;
 
-use crate::network_map::{self, NetworkMap};
+use super::{Icon, Tab};
+use iced::{Align, Button, Color, Column, Container, Element, Length, Row, Text, Vector, button};
+use iced_aw::TabLabel;
+use petgraph::Undirected;
+use sim::{FieldPosition, NodeType};
+
+use crate::network_map::{self, NetworkEdge, NetworkMap, NetworkNode};
+
+#[derive(Clone, Debug)]
+pub struct NetworkTabNode {
+	id: usize,
+	node_type: NodeType,
+	field_position: FieldPosition,
+	ip_addr: Ipv4Addr,
+	
+}
+impl NetworkNode for NetworkTabNode {
+	fn unique_id(&self) -> usize {
+		self.id
+	}
+	fn color(&self) -> Color {
+		match self.node_type {
+			NodeType::Machine => Color::BLACK,
+			NodeType::Network => Color::from_rgb(0.5, 0.5, 0.5),
+		}
+		
+	}
+	fn size(&self) -> u32 {
+		30
+	}
+	fn position(&self) -> Vector {
+		Vector::new(self.field_position.x as f32, self.field_position.y as f32)
+	}
+}
+#[derive(Clone, Debug)]
+pub struct NetworkTabEdge {
+	pub source: usize,
+	pub dest: usize,
+	pub latency: usize,
+}
+impl NetworkEdge for NetworkTabEdge {
+	fn color(&self) -> Color {
+		Color::BLACK
+	}
+	fn width(&self) -> u8 {
+		5
+	}
+	fn unique_connection(&self) -> (usize, usize) {
+		(self.source, self.dest)
+	}
+}
 
 #[derive(Debug, Clone)]
 pub enum Message {
+	AddNode(NetworkTabNode),
+	RemoveNode(usize), // Removes edges too.
+
 	NetMap(network_map::Message),
 }
 
 pub struct NetworkTab {
-	map: NetworkMap,
+	map: NetworkMap<NetworkTabNode, NetworkTabEdge, Undirected>,
 }
 
 impl NetworkTab {
@@ -21,10 +72,21 @@ impl NetworkTab {
 	}
 
 	pub fn update(&mut self, message: Message) {
-		/* match message {
-			CounterMessage::Increase => self.value += 1,
-			CounterMessage::Decrease => self.value -= 1,
-		} */
+		match message {
+			Message::AddNode(node) => {
+				self.map.add_node(node);
+			},
+			Message::RemoveNode(idx) => {
+				self.map.remove_node(idx);
+			},
+			Message::NetMap(netmap_msg) => {
+				todo!();
+				/* match netmap_msg {
+					.
+				}
+				self.map.update(netmap_msg).map(|m|self.update(Message::NetMap(m))); */
+			},
+		}
 	}
 }
 

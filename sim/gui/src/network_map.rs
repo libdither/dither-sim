@@ -1,10 +1,15 @@
 #![allow(unused)]
 
+use std::collections::HashMap;
+
 use iced::{
 	canvas::{self, event, Cache, Cursor, Event, Geometry, Path},
 	mouse, Canvas, Color, Element, Length, Point, Rectangle, Vector,
 };
 use nalgebra::Vector2;
+use petgraph::{EdgeType, Graph, graph::{EdgeIndex, NodeIndex}};
+
+pub use petgraph::{Directed, Undirected};
 
 #[derive(Derivative)]
 #[derivative(Default)]
@@ -17,19 +22,24 @@ enum Interaction {
 		start: Point,
 	},
 }
+pub trait NetworkNode {
+	fn unique_id(&self) -> usize;
 
-#[derive(Debug, Clone)]
-pub struct NetworkNode {
-	position: Vector2<i64>, // Position
-	size: u32,
-	state: u8,
-	connections: Vec<usize>, // Vector of indices representing outgoing connections
+	fn color(&self) -> Color;
+	fn size(&self) -> u32;
+	fn position(&self) -> Vector;
+}
+pub trait NetworkEdge {
+	fn color(&self) -> Color;
+	fn width(&self) -> u8;
+	fn unique_connection(&self) -> (usize, usize); // Useful when adding edge to graph
 }
 
 #[derive(Derivative)]
 #[derivative(Default)]
-pub struct NetworkMap {
-	pub nodes: Vec<NetworkNode>,
+pub struct NetworkMap<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> {
+	nodes: Graph<N, E, Ty>,
+	unique_id_map: HashMap<usize, NodeIndex>,
 	node_cache: Cache,
 	#[derivative(Default(value="1.0"))]
 	scaling: f32,
@@ -38,51 +48,44 @@ pub struct NetworkMap {
 }
 #[derive(Debug, Clone)]
 pub enum Message {
+	// Input
+	TriggerNewNode, // Triggers are dealt by parent in the ui model, Trigger should result in new node being added
+	TriggerNewEdge(NodeIndex, NodeIndex), // They can be sent by any object, but are also produced internally
+	Update, // Trigger redraw
+
 	// Output
 	NodeClicked(usize),
-	// Input
-	Update,
-	UpdateMap(Vec<NetworkNode>)
+	EdgeClicked(usize),
+	NodeDragged(usize, Vector),
 }
-impl NetworkMap {
+impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	const MIN_SCALING: f32 = 0.1;
 	const MAX_SCALING: f32 = 2.0;
+	pub fn add_node(&mut self, node: N) {
+		let unique_id = node.unique_id();
+		let node_index = self.nodes.add_node(node);
+		self.unique_id_map.insert(unique_id, node_index);
+	}
+	pub fn remove_node(&mut self, unique_id: usize) -> Option<()> {
+		let node_index = self.unique_id_map.get(&unique_id)?;
+		self.nodes.remove_node(*node_index);
+		Some(())
+	}
+
 	pub fn test_conf() -> Self {
 		Self {
-			nodes: vec![
-				NetworkNode {
-					position: Vector2::new(0, 0),
-					size: 30,
-					state: 0,
-					connections: vec![1],
-				},
-				NetworkNode {
-					position: Vector2::new(500, 0),
-					size: 30,
-					state: 2,
-					connections: vec![0],
-				},
-				NetworkNode {
-					position: Vector2::new(300, 0),
-					size: 30,
-					state: 2,
-					connections: vec![0],
-				},
-				NetworkNode {
-					position: Vector2::new(200, -500),
-					size: 40,
-					state: 1,
-					connections: vec![0, 1],
-				},
-			],
-			..Default::default()
+			nodes: Graph::default(),
+			unique_id_map: HashMap::default(),
+			node_cache: Default::default(),
+			scaling: Default::default(),
+			translation: Default::default(),
+			interaction: Default::default(),
 		}
 	}
-	pub fn update(&mut self, message: Message) {
+	pub fn update(&mut self, message: Message) -> Option<Message> {
 		match message {
-			Message::Update => {}
-			Message::UpdateMap(nodes) => self.nodes = nodes,
-			_ => unreachable!(),
+			Message::Update => todo!(),
+			_ => Some(message),
 		}
 	}
 	pub fn view<'a>(&'a mut self) -> Element<'a, Message> {
@@ -93,7 +96,7 @@ impl NetworkMap {
 	}
 }
 
-impl<'a> canvas::Program<Message> for NetworkMap {
+impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> for NetworkMap<N, E, Ty> {
 	fn update(
 		&mut self,
 		event: Event,
@@ -192,9 +195,10 @@ impl<'a> canvas::Program<Message> for NetworkMap {
 				frame.scale(self.scaling);
 				frame.translate(self.translation);
 				//frame.scale(Cell::SIZE as f32);
-				for node in &self.nodes {
-					let point = Point::new(node.position.x as f32, node.position.y as f32);
-					frame.fill(&Path::circle(point, node.size as f32), Color::BLACK);
+				for node in self.nodes.node_weights() {
+					let position = node.position();
+					let point = Point::new(position.x as f32, position.y as f32);
+					frame.fill(&Path::circle(point, node.size() as f32), Color::BLACK);
 				}
 			});
 		});

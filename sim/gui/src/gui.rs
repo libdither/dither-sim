@@ -3,7 +3,7 @@
 pub use iced::Settings;
 use iced::{executor, Application, Clipboard, Command, Element, Subscription};
 
-use sim::InternetAction;
+use sim::{InternetAction, InternetEvent};
 
 use crate::subscription::{self, Event};
 
@@ -103,7 +103,19 @@ impl Application for NetSimApp {
 							Event::Init(sender) => state.internet_action = sender,
 							Event::Event(internet_event) => {
 								match internet_event {
-									_ => { println!("Received Internet Event: {:?}", internet_event) }
+									InternetEvent::NewMachine(index) => {
+										
+									}
+									InternetEvent::NewNetwork(index) => {
+
+									}
+									InternetEvent::NodeInfo(info) => {
+										
+									}
+									InternetEvent::MachineInfo(_) => todo!(),
+									InternetEvent::NetworkInfo(_) => todo!(),
+									InternetEvent::Error(_) => todo!(),
+									//_ => { println!("Received Internet Event: {:?}", internet_event) }
 								}
 							}
 							Event::Error(err) => log::error!("Internet Sim errored: {:?}", err),

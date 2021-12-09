@@ -1,9 +1,10 @@
-use std::time::Duration;
+use std::{net::Ipv4Addr, time::Duration};
 
 use async_std::task::JoinHandle;
-use device::{DeviceCommand, DeviceEvent};
+use device::{Address, DeviceCommand, DeviceEvent};
 use nalgebra::Vector2;
-use netsim_embed::{Machine, Network, Plug};
+use netsim_embed::{Ipv4Range, Machine, Network, Plug};
+use node::{NodeID, RouteCoord};
 
 use super::netsim_ext::{Wire, WireHandle};
 
@@ -21,6 +22,34 @@ impl InternetMachine {
 	pub async fn set_latency(&mut self, latency: Latency) {
 		self.internal_wire.set_delay(Duration::from_millis(latency)).await;
 	}
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeInfo {
+	id: usize,
+	position: FieldPosition,
+	internal_latency: Latency,
+	local_address: Ipv4Addr,
+	node_type: NodeType,
+}
+#[derive(Debug, Clone)]
+pub enum NodeType {
+	Network,
+	Machine,
+}
+#[derive(Debug, Clone)]
+pub struct MachineInfo {
+	id: usize,
+	route_coord: RouteCoord,
+	listening_addr: Address,
+	public_addr: Address,
+	node_id: NodeID,
+}
+#[derive(Debug, Clone)]
+pub struct NetworkInfo {
+	id: usize,
+	connections: Vec<usize>,
+	ip_range: Ipv4Range,
 }
 
 enum NodeVariant {
