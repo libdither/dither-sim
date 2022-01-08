@@ -13,8 +13,12 @@ pub struct NetworkTabNode {
 	id: usize,
 	node_type: NodeType,
 	field_position: FieldPosition,
-	ip_addr: Ipv4Addr,
-	
+	ip_addr: Option<Ipv4Addr>,
+}
+impl NetworkTabNode {
+	fn new(id: usize, node_type: NodeType) -> NetworkTabNode {
+		Self { id, node_type, field_position: Default::default(), ip_addr: None }
+	}
 }
 impl NetworkNode for NetworkTabNode {
 	fn unique_id(&self) -> usize {
@@ -54,10 +58,13 @@ impl NetworkEdge for NetworkTabEdge {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-	AddNode(NetworkTabNode),
+	AddNode(usize, sim::NodeType),
+	UpdateNode(usize, sim::NodeInfo),
+	UpdateMachine(usize, sim::MachineInfo),
+	UpdateNetwork(usize, sim::NetworkInfo),
 	RemoveNode(usize), // Removes edges too.
 
-	NetMap(network_map::Message),
+	NetMapMessage(network_map::Message),
 }
 
 pub struct NetworkTab {
@@ -73,19 +80,23 @@ impl NetworkTab {
 
 	pub fn update(&mut self, message: Message) {
 		match message {
-			Message::AddNode(node) => {
-				self.map.add_node(node);
+			Message::AddNode(id, node_type) => {
+				self.map.add_node(NetworkTabNode::new(id, node_type));
 			},
+			Message::UpdateNode(id, info) => {
+				let node = self.map.node_mut(id).unwrap();
+				node.field_position = info.position;
+				node.ip_addr = info.local_address;
+			}
+			Message::UpdateMachine(_, _) => {},
+    		Message::UpdateNetwork(_, _) => {},
 			Message::RemoveNode(idx) => {
 				self.map.remove_node(idx);
 			},
-			Message::NetMap(netmap_msg) => {
-				todo!();
-				/* match netmap_msg {
-					.
-				}
-				self.map.update(netmap_msg).map(|m|self.update(Message::NetMap(m))); */
+			Message::NetMapMessage(netmap_msg) => {
+				self.map.update(netmap_msg);
 			},
+    
 		}
 	}
 }
@@ -103,7 +114,7 @@ impl Tab for NetworkTab {
 	}
 
 	fn content(&mut self) -> Element<'_, Self::Message> {
-		let content = Column::new().push(self.map.view().map(move |message| Message::NetMap(message)));
+		let content = Column::new().push(self.map.view().map(move |message| Message::NetMapMessage(message)));
 
 		Container::new(content)
 			.width(Length::Fill)

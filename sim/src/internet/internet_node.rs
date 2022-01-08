@@ -12,25 +12,35 @@ pub type FieldPosition = Vector2<i32>;
 /// Measured in milliseconds
 pub type Latency = u64;
 
+pub enum InternetMachineConnection {
+	Unconnected(Plug),
+	Connected(Ipv4Addr),
+}
+
 pub struct InternetMachine {
 	pub machine: Machine<DeviceCommand, DeviceEvent>,
 	pub event_join_handle: JoinHandle<()>,
-	pub unconnected_plug: Option<Plug>,
-	pub internal_wire: WireHandle,
+	pub connection_status: InternetMachineConnection,
+	/// Wire for internal latency simulation
+	pub internal_wire: WireHandle, 
+	pub internal_latency: Latency,
 }
 impl InternetMachine {
 	pub async fn set_latency(&mut self, latency: Latency) {
-		self.internal_wire.set_delay(Duration::from_millis(latency)).await;
+		self.internal_latency = latency;
+		self.internal_wire.set_delay(Duration::from_millis(self.internal_latency)).await;
+	}
+	pub fn latency(&self) -> Latency {
+		self.internal_latency
 	}
 }
 
 #[derive(Debug, Clone)]
 pub struct NodeInfo {
-	id: usize,
-	position: FieldPosition,
-	internal_latency: Latency,
-	local_address: Ipv4Addr,
-	node_type: NodeType,
+	pub position: FieldPosition,
+	pub internal_latency: Latency,
+	pub local_address: Option<Ipv4Addr>,
+	pub node_type: NodeType,
 }
 #[derive(Debug, Clone)]
 pub enum NodeType {
@@ -39,17 +49,15 @@ pub enum NodeType {
 }
 #[derive(Debug, Clone)]
 pub struct MachineInfo {
-	id: usize,
-	route_coord: RouteCoord,
-	listening_addr: Address,
-	public_addr: Address,
-	node_id: NodeID,
+	pub route_coord: RouteCoord,
+	pub listening_addr: Address,
+	pub public_addr: Address,
+	pub node_id: NodeID,
 }
 #[derive(Debug, Clone)]
 pub struct NetworkInfo {
-	id: usize,
-	connections: Vec<usize>,
-	ip_range: Ipv4Range,
+	pub connections: Vec<usize>,
+	pub ip_range: Ipv4Range,
 }
 
 enum NodeVariant {
@@ -65,16 +73,35 @@ pub struct InternetNode {
 }
 
 impl InternetNode {
-	pub async fn from_machine(machine: InternetMachine, position: FieldPosition) -> Self {
+	pub fn from_machine(machine: InternetMachine, position: FieldPosition) -> Self {
 		Self {
 			variant: NodeVariant::Machine(machine),
 			position,
 		}
 	}
-	pub async fn from_network(network: Network, position: FieldPosition) -> Self {
+	pub fn from_network(network: Network, position: FieldPosition) -> Self {
 		Self {
 			variant: NodeVariant::Network(network),
 			position,
+		}
+	}
+	pub fn gen_node_info(&self) -> NodeInfo {
+		let (internal_latency, local_address, node_type) = match &self.variant {
+			NodeVariant::Network(network) => {
+				(Latency::MIN, Some(network.range().base_addr()), NodeType::Network)
+			},
+			NodeVariant::Machine(machine) => {
+				(machine.latency(), match machine.connection_status {
+					InternetMachineConnection::Connected(addr) => Some(addr),
+					InternetMachineConnection::Unconnected(_) => None,
+				}, NodeType::Machine)
+			},
+		};
+		NodeInfo {
+			position: self.position.clone(),
+			internal_latency,
+			local_address,
+			node_type,
 		}
 	}
 }

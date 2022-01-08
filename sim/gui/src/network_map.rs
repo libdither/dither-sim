@@ -66,6 +66,10 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 		let node_index = self.nodes.add_node(node);
 		self.unique_id_map.insert(unique_id, node_index);
 	}
+	pub fn node_mut(&mut self, id: usize) -> Option<&mut N> {
+		let node_idx = self.unique_id_map.get(&id)?;
+		self.nodes.node_weight_mut(*node_idx)
+	}
 	pub fn remove_node(&mut self, unique_id: usize) -> Option<()> {
 		let node_index = self.unique_id_map.get(&unique_id)?;
 		self.nodes.remove_node(*node_index);

@@ -7,7 +7,7 @@ use sim::{InternetAction, InternetEvent};
 
 use crate::subscription::{self, Event};
 
-mod loaded;
+pub mod loaded;
 mod loading;
 
 pub struct NetSimAppSettings {}
@@ -102,21 +102,7 @@ impl Application for NetSimApp {
 						match event {
 							Event::Init(sender) => state.internet_action = sender,
 							Event::Event(internet_event) => {
-								match internet_event {
-									InternetEvent::NewMachine(index) => {
-										
-									}
-									InternetEvent::NewNetwork(index) => {
-
-									}
-									InternetEvent::NodeInfo(info) => {
-										
-									}
-									InternetEvent::MachineInfo(_) => todo!(),
-									InternetEvent::NetworkInfo(_) => todo!(),
-									InternetEvent::Error(_) => todo!(),
-									//_ => { println!("Received Internet Event: {:?}", internet_event) }
-								}
+								state.process(loaded::Message::InternetEvent(internet_event));
 							}
 							Event::Error(err) => log::error!("Internet Sim errored: {:?}", err),
 							Event::Closed => {

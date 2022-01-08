@@ -7,8 +7,8 @@ extern crate slotmap;
 
 use iced::{Application, Settings, window};
 use crate::gui::{NetSimApp, NetSimAppSettings};
-mod tabs;
-mod network_map;
+pub mod tabs;
+pub mod network_map;
 mod subscription;
 mod gui;
 

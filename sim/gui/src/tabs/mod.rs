@@ -8,10 +8,10 @@ const TAB_PADDING: u16 = 16;
 
 mod theme;
 
-mod network_tab;
+pub mod network_tab;
 use network_tab::NetworkTab;
 
-mod dither_tab;
+pub mod dither_tab;
 use dither_tab::DitherTab;
 
 const ICON_FONT: Font = iced::Font::External {
@@ -42,6 +42,7 @@ pub struct TabBar {
 #[derive(Clone, Debug)]
 pub enum Message {
 	TabSelected(usize),
+
 	NetworkTab(network_tab::Message),
 	DitherTab(dither_tab::Message),
 }
