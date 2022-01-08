@@ -4,8 +4,8 @@ members = [
 
 	"sim",
 	# "sim/cli",
-	"sim/gui",
-	"sim/device",
+	"sim/gui", # Gui simulation
+	"sim/device", # Dither Client controlled by stdin and stdout by sim/gui
 ]
 
 [patch.crates-io]

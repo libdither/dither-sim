@@ -105,9 +105,6 @@ impl State {
 				None
 			}
 			Message::TriggerAddMachine => {
-				/* let rng1 = rand::thread_rng().gen_range(-10000..=10000);
-				let rng2 = rand::thread_rng().gen_range(-10000..=10000);
-				self.net_action(InternetAction::AddMachine(FieldPosition::new(rng1, rng2))); */
 				None
 			},
 			Message::TriggerAddNetwork => {

@@ -5,14 +5,12 @@ extern crate serde;
 extern crate log;
 #[macro_use]
 extern crate thiserror;
-#[macro_use]
-extern crate derivative;
+/* #[macro_use]
+extern crate derivative; */
 
 mod internet;
 
-use futures::channel::mpsc;
-
-use internet::{Internet, InternetAction, InternetEvent, };
+use internet::{Internet};
 
 
 fn main() {

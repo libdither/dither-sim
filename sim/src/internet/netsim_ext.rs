@@ -71,12 +71,12 @@ impl Wire {
 					}
 					a_outgoing_data = packet_to_a.receive() => {
 						if let Some(data) = a_outgoing_data {
-							a_tx.send(data).await;
+							a_tx.send(data).await.unwrap();
 						}
 					}
 					b_outgoing_data = packet_to_b.receive() => {
 						if let Some(data) = b_outgoing_data {
-							b_tx.send(data).await;
+							b_tx.send(data).await.unwrap();
 						}
 					}
 				}
@@ -90,12 +90,12 @@ impl Wire {
 					select! {
 						outgoing_a = packet_to_a.receive() => {
 							if let Some(data) = outgoing_a {
-								a_tx.send(data).await;
+								a_tx.send(data).await.unwrap();
 							} else { if two_is_done { break } else { one_is_done = true; } }
 						}
 						outgoing_b = packet_to_b.receive() => {
 							if let Some(data) = outgoing_b {
-								b_tx.send(data).await;
+								b_tx.send(data).await.unwrap();
 							} else { if one_is_done { break } else { two_is_done = true; } }
 						}
 					}

@@ -25,6 +25,7 @@
 				cmake
 				rust-toolchain
 				cargo-edit
+				mold
 				gdb
 				lldb
 				vscode-extensions.vadimcn.vscode-lldb

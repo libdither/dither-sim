@@ -6,7 +6,7 @@ use nalgebra::Vector2;
 use netsim_embed::{Ipv4Range, Machine, Network, Plug};
 use node::{NodeID, RouteCoord};
 
-use super::netsim_ext::{Wire, WireHandle};
+use super::netsim_ext::WireHandle;
 
 pub type FieldPosition = Vector2<i32>;
 /// Measured in milliseconds

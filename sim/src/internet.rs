@@ -12,7 +12,6 @@ use netsim_embed::{Ipv4Range, Machine, MachineId, Network};
 use serde::Deserialize;
 
 use device::{DeviceCommand, DeviceEvent};
-use node::{NodeID, RouteCoord, net};
 use futures::{SinkExt, StreamExt, channel::mpsc};
 
 mod netsim_ext;
@@ -162,24 +161,22 @@ impl Internet {
 	}
 	/// Send event function (used internally by run())
 	async fn send_event(&mut self, event: InternetEvent) -> Result<(), InternetError> {
-		self.event_sender.send(event).await.map_err(|err|InternetError::EventReceiverClosed)
+		self.event_sender.send(event).await.map_err(|_|InternetError::EventReceiverClosed)
 	}
 	async fn action(&mut self, action: InternetAction) -> Result<(), InternetError> {
-		self.action_sender.send(action).await.map_err(|err|InternetError::ActionSenderClosed)
+		self.action_sender.send(action).await.map_err(|_|InternetError::ActionSenderClosed)
 	}
 	/// Spawn machine at position
 	async fn spawn_machine(&mut self, position: FieldPosition) -> NodeIndex {
 		let machine_id = self.network.node_count();
 
 		let (plug_to_wire, machine_plug) = netsim_embed::wire();
-
-		let event_sender = self.event_sender.clone();
 		
 		let (machine, mut device_event_receiver) = Machine::new(MachineId(machine_id), machine_plug, async_process::Command::new(&self.device_exec)).await;
 		let mut action_sender = self.action_sender.clone();
 		let event_join_handle = task::spawn(async move { 
 			while let Some(device_event) = device_event_receiver.next().await {
-				action_sender.send(InternetAction::DeviceEvent(machine_id, device_event)).await;
+				action_sender.send(InternetAction::DeviceEvent(machine_id, device_event)).await.expect("device action sender crashed");
 			}
 		});
 
