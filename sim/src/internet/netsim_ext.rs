@@ -5,8 +5,7 @@ use async_std::{self, task::{self, JoinHandle}};
 use futures::{SinkExt, StreamExt, channel::mpsc, select};
 use netsim_embed::Plug;
 
-use futures_delay_queue::{delay_queue, Receiver};
-use futures_intrusive::channel::shared::GenericReceiver;
+use futures_delay_queue::delay_queue;
 enum WireAction {
 	SetDelay(Duration),
 	SwapPlugA(Plug),
@@ -26,7 +25,7 @@ pub struct Wire {
 
 impl Wire {
 	pub fn connect(mut self, plug_a: Plug, plug_b: Plug) -> WireHandle {
-		let (mut action_sender, mut action_receiver) = mpsc::channel(5);
+		let (action_sender, mut action_receiver) = mpsc::channel(5);
 		let (mut return_sender, return_receiver) = mpsc::channel(1);
 
 		let (mut a_tx, mut a_rx) = plug_a.split();
@@ -47,13 +46,13 @@ impl Wire {
 									let (mut tx, mut rx) = new_plug.split();
 									mem::swap(&mut tx, &mut a_tx); mem::swap(&mut rx, &mut a_rx);
 									let old_plug = Plug::join(tx, rx);
-									return_sender.send(WireReturn::SwappedPlugA(old_plug)).await;
+									return_sender.send(WireReturn::SwappedPlugA(old_plug)).await.unwrap();
 								},
 								WireAction::SwapPlugB(new_plug) => {
 									let (mut tx, mut rx) = new_plug.split();
 									mem::swap(&mut tx, &mut b_tx); mem::swap(&mut rx, &mut b_rx);
 									let old_plug = Plug::join(tx, rx);
-									return_sender.send(WireReturn::SwappedPlugB(old_plug)).await;
+									return_sender.send(WireReturn::SwappedPlugB(old_plug)).await.unwrap();
 								},
 								WireAction::Disconnect => { disconnecting = true; break },
 								WireAction::ForceDisconnect => break,
@@ -72,12 +71,12 @@ impl Wire {
 					}
 					a_outgoing_data = packet_to_a.receive() => {
 						if let Some(data) = a_outgoing_data {
-							a_tx.send(data);
+							a_tx.send(data).await;
 						}
 					}
 					b_outgoing_data = packet_to_b.receive() => {
 						if let Some(data) = b_outgoing_data {
-							b_tx.send(data);
+							b_tx.send(data).await;
 						}
 					}
 				}
@@ -91,12 +90,12 @@ impl Wire {
 					select! {
 						outgoing_a = packet_to_a.receive() => {
 							if let Some(data) = outgoing_a {
-								a_tx.send(data);
+								a_tx.send(data).await;
 							} else { if two_is_done { break } else { one_is_done = true; } }
 						}
 						outgoing_b = packet_to_b.receive() => {
 							if let Some(data) = outgoing_b {
-								b_tx.send(data);
+								b_tx.send(data).await;
 							} else { if one_is_done { break } else { two_is_done = true; } }
 						}
 					}
@@ -105,7 +104,7 @@ impl Wire {
 			
 			(self, Plug::join(a_tx, a_rx), Plug::join(b_tx, b_rx))
 		});
-		WireHandle { join_handle, action_sender, return_receiver }
+		WireHandle { join_handle, action_sender, return_receiver, did_error: None }
 	}
 }
 
@@ -113,13 +112,16 @@ pub struct WireHandle {
 	join_handle: JoinHandle<(Wire, Plug, Plug)>,
 	action_sender: mpsc::Sender<WireAction>,
 	return_receiver: mpsc::Receiver<WireReturn>,
+	did_error: Option<mpsc::SendError>,
 }
 impl WireHandle {
-	async fn action(&mut self, action: WireAction) -> Result<(), mpsc::SendError> {
-		self.action_sender.send(action).await
+	async fn action(&mut self, action: WireAction) {
+		match self.action_sender.send(action).await {
+			Err(err) => self.did_error = Some(err), _ => {},
+		}
 	}
 	pub async fn swap_a_plug(&mut self, plug_a: Plug) -> Option<Plug> {
-		self.action(WireAction::SwapPlugA(plug_a));
+		self.action(WireAction::SwapPlugA(plug_a)).await;
 		if let Some(WireReturn::SwappedPlugA(plug)) = self.return_receiver.next().await {
 			Some(plug)
 		} else { None }

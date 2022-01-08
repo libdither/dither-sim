@@ -1,20 +1,19 @@
-#![allow(unused)]
+#![allow(dead_code)]
+
 /// Internet Simulation Module
 /// Contains all necessary componenets to create a virtual network on a given computer and spawn devices running the Dither protocol
 
-use std::{collections::HashMap, fmt::{Debug}, fs::File, io::{BufReader, Write}, net::Ipv4Addr, time::Duration};
+use std::{fmt::{Debug}, time::Duration};
 use std::ops::Range;
 
-use anyhow::Context;
 use async_std::task;
-use nalgebra::Vector2;
 use petgraph::{graph::NodeIndex, Graph};
-use netsim_embed::{Ipv4Range, Machine, MachineId, Netsim, Network};
+use netsim_embed::{Ipv4Range, Machine, MachineId, Network};
 use serde::Deserialize;
 
-use device::{Address, DeviceCommand, DeviceEvent};
+use device::{DeviceCommand, DeviceEvent};
 use node::{NodeID, RouteCoord, net};
-use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream};
+use futures::{SinkExt, StreamExt, channel::mpsc};
 
 mod netsim_ext;
 mod internet_node;
@@ -84,6 +83,8 @@ pub enum InternetEvent {
 pub enum InternetError {
 	#[error("Event Receiver Closed")]
 	EventReceiverClosed,
+	#[error("Action Sender Closed")]
+	ActionSenderClosed,
 	#[error("Spawned Too many networks, not enough addresses (see MAX_NETWORKS)")]
 	TooManyNetworks,
 
@@ -134,17 +135,19 @@ impl Internet {
 				match action {
 					InternetAction::AddNetwork(position) => {
 						let idx: NodeIndex = self.spawn_network(position).await?;
-						self.send_event(InternetEvent::NewNetwork(idx.index()));
+						self.send_event(InternetEvent::NewNetwork(idx.index())).await?;
 						log::debug!("Added Network Node: {:?}", idx);
 					}
 					InternetAction::AddMachine(position) => {
 						let idx = self.spawn_machine(position).await;
-						self.send_event(InternetEvent::NewMachine(idx.index()));
+						self.send_event(InternetEvent::NewMachine(idx.index())).await?;
+						self.action(InternetAction::GetNodeInfo(idx.index())).await?;
 						log::debug!("Added Machine Node: {:?}", idx);
 					}
 					InternetAction::GetNodeInfo(index) => {
 						let node = self.network.node_weight(NodeIndex::<u32>::new(index));
 						let node_info = node.map(|n|n.gen_node_info());
+						self.send_event(InternetEvent::NodeInfo(index, node_info)).await?;
 					}
 					_ => println!("Unimplemented Action")
 				}
@@ -161,6 +164,9 @@ impl Internet {
 	async fn send_event(&mut self, event: InternetEvent) -> Result<(), InternetError> {
 		self.event_sender.send(event).await.map_err(|err|InternetError::EventReceiverClosed)
 	}
+	async fn action(&mut self, action: InternetAction) -> Result<(), InternetError> {
+		self.action_sender.send(action).await.map_err(|err|InternetError::ActionSenderClosed)
+	}
 	/// Spawn machine at position
 	async fn spawn_machine(&mut self, position: FieldPosition) -> NodeIndex {
 		let machine_id = self.network.node_count();
@@ -173,7 +179,7 @@ impl Internet {
 		let mut action_sender = self.action_sender.clone();
 		let event_join_handle = task::spawn(async move { 
 			while let Some(device_event) = device_event_receiver.next().await {
-				action_sender.send(InternetAction::DeviceEvent(machine_id, device_event));
+				action_sender.send(InternetAction::DeviceEvent(machine_id, device_event)).await;
 			}
 		});
 
@@ -199,14 +205,14 @@ impl Internet {
 		let node = InternetNode::from_network(network, position);
 		Ok(self.network.add_node(node))
 	}
-	/// Connect Machine to Network, or Network to Network.
+	/* /// Connect Machine to Network, or Network to Network.
 	/// Returns error if: Already connected or both nodes are Machines
 	async fn connect(&mut self, node_a: NodeIndex, node_b: NodeIndex) -> Result<(), InternetError> {
 		Ok(())
 	}
 	async fn disconnect(&mut self, node_a: NodeIndex, node_b: NodeIndex) -> Result<(), InternetError> {
 		Ok(())
-	}
+	} */
 	/* pub fn save(&self, filepath: &str) -> Result<(), InternetError> {
 		let mut file = File::create(filepath).context("failed to create file (check perms) at {}")?;
 		let data = bincode::serialize(&self).context("failed to serialize network")?;

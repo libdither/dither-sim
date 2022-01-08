@@ -2,7 +2,7 @@ use iced::{Align, Button, Checkbox, Column, Container, Element, Row, Text, Vecto
 use sim::{FieldPosition, InternetAction, InternetEvent, NodeType};
 use futures::channel::mpsc;
 
-use crate::{subscription::InternetRecipe, tabs::{self, TabBar, network_tab}};
+use crate::{network_map, subscription::InternetRecipe, tabs::{self, TabBar, network_tab}};
 
 #[derive(Default)]
 pub struct TopBar {
@@ -37,6 +37,7 @@ pub enum Message {
 	RemoveNode(usize),
 	MoveNode(usize, FieldPosition),
 	MousePosition(Vector),
+	AddNode(FieldPosition, NodeType)
 }
 
 impl State {
@@ -82,14 +83,31 @@ impl State {
 				}
 			}
 			// Forward Tab events
-			Message::TabUpdate(tab_message) => { self.tabs.update(tab_message); None },
+			Message::TabUpdate(tab_message) => {
+				match &tab_message {
+					tabs::Message::NetworkTab(network_tab_message) => match network_tab_message {
+						network_tab::Message::NetMapMessage(netmap_msg) => match netmap_msg {
+							network_map::Message::TriggerNewNode(point) => {
+								let field_position = FieldPosition::new(point.x as i32, point.y as i32);
+								return self.process(Message::AddNode(field_position, NodeType::Machine));
+							}
+							_ => {},
+						}
+						_ => {}
+					}
+					_ => {},
+				}
+				self.tabs.update(tab_message); None
+			},
 			// Handle button events
 			Message::ToggleSim(toggle) => {
 				self.top_bar.toggle_sim = toggle;
 				None
 			}
 			Message::TriggerAddMachine => {
-				self.net_action(InternetAction::AddMachine(self.field_position));
+				/* let rng1 = rand::thread_rng().gen_range(-10000..=10000);
+				let rng2 = rand::thread_rng().gen_range(-10000..=10000);
+				self.net_action(InternetAction::AddMachine(FieldPosition::new(rng1, rng2))); */
 				None
 			},
 			Message::TriggerAddNetwork => {
@@ -97,8 +115,15 @@ impl State {
 				None
 			},
 			// Handle general events
-			Message::MoveNode(index, position) => {
-				self.net_action(InternetAction::SetPosition(index, position));
+			Message::MoveNode(index, new_position) => {
+				self.net_action(InternetAction::SetPosition(index, new_position));
+				None
+			},
+			Message::AddNode(position, node_type) => {
+				match node_type {
+					NodeType::Machine => self.net_action(InternetAction::AddMachine(position)),
+					NodeType::Network => self.net_action(InternetAction::AddNetwork(position)),
+				}
 				None
 			},
 			_ => { log::warn!("received unimplemented loaded::Message: {:?}", message); None }

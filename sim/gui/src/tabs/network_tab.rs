@@ -6,7 +6,7 @@ use iced_aw::TabLabel;
 use petgraph::Undirected;
 use sim::{FieldPosition, NodeType};
 
-use crate::network_map::{self, NetworkEdge, NetworkMap, NetworkNode};
+use crate::{gui::loaded, network_map::{self, NetworkEdge, NetworkMap, NetworkNode}};
 
 #[derive(Clone, Debug)]
 pub struct NetworkTabNode {
@@ -74,7 +74,7 @@ pub struct NetworkTab {
 impl NetworkTab {
 	pub fn new() -> Self {
 		Self {
-			map: NetworkMap::test_conf(),
+			map: NetworkMap::new(),
 		}
 	}
 
@@ -93,10 +93,14 @@ impl NetworkTab {
 			Message::RemoveNode(idx) => {
 				self.map.remove_node(idx);
 			},
-			Message::NetMapMessage(netmap_msg) => {
-				self.map.update(netmap_msg);
-			},
-    
+			_ => {}
+			// Handled by 
+			/* Message::NetMapMessage(netmap_msg) => {
+				use crate::network_map::Message as MapMsg;
+				match netmap_msg {
+					MapMsg::TriggerNewNode(point) => return loaded::Message::TriggerAddMachine(point)
+				}
+			}, */
 		}
 	}
 }

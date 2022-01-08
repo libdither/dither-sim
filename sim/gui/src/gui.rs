@@ -3,7 +3,7 @@
 pub use iced::Settings;
 use iced::{executor, Application, Clipboard, Command, Element, Subscription};
 
-use sim::{InternetAction, InternetEvent};
+use sim::InternetAction;
 
 use crate::subscription::{self, Event};
 
@@ -53,8 +53,9 @@ impl Application for NetSimApp {
 				}
 			}
 			// State is changed to Loading once Init Event triggered from Subscription
-			NetSimApp::Loaded(state) => Subscription::from_recipe(state.internet_recipe.clone())
-				.map(|event| Message::InternetEvent(event)),
+			NetSimApp::Loaded(state) => {
+				Subscription::from_recipe(state.internet_recipe.clone())
+				.map(|event| Message::InternetEvent(event))},
 		}
 	}
 
