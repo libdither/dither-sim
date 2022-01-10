@@ -35,6 +35,7 @@ impl NetworkNode for NetworkTabNode {
 		30
 	}
 	fn position(&self) -> Vector {
+		
 		Vector::new(self.field_position.x as f32, self.field_position.y as f32)
 	}
 }

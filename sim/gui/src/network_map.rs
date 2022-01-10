@@ -2,11 +2,12 @@
 
 use std::collections::HashMap;
 
-use iced::{Canvas, Color, Element, Length, Point, Rectangle, Vector, canvas::{self, event, Cache, Cursor, Event, Geometry, Path}, keyboard, mouse};
+use iced::{Canvas, Color, Element, Length, Point, Rectangle, Vector, canvas::{self, Text, event, Cache, Cursor, Event, Geometry, Path}, keyboard, mouse};
 use nalgebra::Vector2;
 use petgraph::{EdgeType, Graph, graph::{EdgeIndex, NodeIndex}};
 
 pub use petgraph::{Directed, Undirected};
+use sim::FieldPosition;
 
 #[derive(Derivative)]
 #[derivative(Default)]
@@ -43,11 +44,13 @@ pub struct NetworkMap<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> {
 	scaling: f32, // Important: this should not be zero
 	translation: Vector,
 	interaction: Interaction,
+
+	field_position: FieldPosition,
 }
 #[derive(Debug, Clone)]
 pub enum Message {
 	// Input
-	TriggerNewNode(Point), // Triggers are dealt by parent in the ui model, Trigger should result in new node being added
+	TriggerNewNode(FieldPosition), // Triggers are dealt by parent in the ui model, Trigger should result in new node being added
 	TriggerNewEdge(NodeIndex, NodeIndex), // They can be sent by any object, but are also produced internally
 	Update, // Trigger redraw
 
@@ -55,10 +58,14 @@ pub enum Message {
 	NodeClicked(usize),
 	EdgeClicked(usize),
 	NodeDragged(usize, Vector),
+
+	// Data output
+	CursorMoved(Point),
 }
 impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	const MIN_SCALING: f32 = 0.1;
-	const MAX_SCALING: f32 = 5.0;
+	const MAX_SCALING: f32 = 50.0;
+	const SCALING_SPEED: f32 = 30.0;
 	pub fn add_node(&mut self, node: N) {
 		let unique_id = node.unique_id();
 		let node_index = self.nodes.add_node(node);
@@ -88,6 +95,7 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 			scaling: 1.0,
 			translation: Default::default(),
 			interaction: Default::default(),
+			field_position: Default::default(),
 		}
 	}
 	pub fn view<'a>(&'a mut self) -> Element<'a, Message> {
@@ -108,12 +116,20 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 		if let Event::Mouse(mouse::Event::ButtonReleased(_)) = event {
 			self.interaction = Interaction::None;
 		}
+		let center = Vector::new(bounds.width / 2.0, bounds.height / 2.0);
 
 		let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
 			position
 		} else {
 			return (event::Status::Ignored, None);
 		};
+		
+		{
+			let cursor_pos = Point::new(cursor_position.x * (1.0 / self.scaling), cursor_position.y * (1.0 / self.scaling)) - self.translation;
+			let vec = Vector2::new(cursor_pos.x, cursor_pos.y);
+			self.field_position = vec.map(|v|v as i32);
+		}
+		
 
 		match event {
 			Event::Mouse(mouse_event) => {
@@ -135,10 +151,13 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 									+ (cursor_position - start)
 										* (1.0 / self.scaling);
 
-								self.node_cache.clear();
+								//self.update();
 							}
 							_ => {},
 						};
+
+						self.update();
+						
 
 						let event_status = match self.interaction {
 							Interaction::None => event::Status::Ignored,
@@ -153,19 +172,18 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 						| mouse::ScrollDelta::Pixels { y, .. } => {
 							let old_scaling = self.scaling;
 
-							self.scaling = (self.scaling * (1.0 + y / 30.0)).max(Self::MIN_SCALING).min(Self::MAX_SCALING);
+							// Change scaling
+							self.scaling = (self.scaling * (1.0 + y / Self::SCALING_SPEED)).max(Self::MIN_SCALING).min(Self::MAX_SCALING);
 
-							if let Some(cursor_to_center) = cursor.position_from(bounds.center()) {
-								let factor = self.scaling - old_scaling;
+							let factor = self.scaling - old_scaling;
 
 								self.translation = self.translation
 									- Vector::new(
-										cursor_to_center.x * factor / (old_scaling * old_scaling),
-										cursor_to_center.y * factor / (old_scaling * old_scaling),
+										cursor_position.x * factor / (old_scaling * old_scaling),
+										cursor_position.y * factor / (old_scaling * old_scaling),
 									);
-							}
 
-							self.node_cache.clear();
+							self.update();
 
 							(event::Status::Captured, None)
 						}
@@ -180,7 +198,12 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 							keyboard::Modifiers { shift: false, control: false, alt: false, logo: false } => {
 								match key_code {
 									keyboard::KeyCode::A => {
-										(event::Status::Captured, Some(Message::TriggerNewNode(cursor_position)))
+										(event::Status::Captured, Some(Message::TriggerNewNode(self.field_position)))
+									}
+									keyboard::KeyCode::R => {
+										self.translation = Default::default();
+										self.scaling = 1.0;
+										(event::Status::Captured, None)
 									}
 									_ => (event::Status::Ignored, None)
 								}
@@ -192,35 +215,40 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 				}
 			}
 		}
-		/* let cursor_position = Vector2::new(
-			(self.translation.x + cursor_position.x) * self.scaling,
-			(self.translation.y + cursor_position.y) * self.scaling,
-		); */
-		/* for node in &self.nodes {
-			if (cursor_position - node.position).magnitude_squared() < size * size {
-
-			}
-		} */
 	}
 
 	fn draw(&self, bounds: Rectangle, cursor: Cursor) -> Vec<Geometry> {
-		let center = Vector::new(bounds.width / 2.0, bounds.height / 2.0);
+		let center = bounds.center(); let center = Vector::new(center.x, center.y);
 
 		let nodes = self.node_cache.draw(bounds.size(), |frame| {
 			let background = Path::rectangle(Point::ORIGIN, frame.size());
 			frame.fill(&background, Color::from_rgb8(240, 240, 240));
 
 			frame.with_save(|frame| {
-				frame.translate(center);
+				//frame.translate(center);
 				frame.scale(self.scaling);
 				frame.translate(self.translation);
 				//frame.scale(Cell::SIZE as f32);
 				for node in self.nodes.node_weights() {
 					let position = node.position();
 					let point = Point::new(position.x as f32, position.y as f32);
-					frame.fill(&Path::circle(point, node.size() as f32), Color::BLACK);
+					
+					frame.fill(&Path::circle(point.clone(), node.size() as f32), Color::BLACK);
+
+					frame.fill_text(Text { content:
+						format!("P: ({}, {})",
+						position.x, position.y),
+						position: point, size: 20.0, color: Color::from_rgb8(255, 0, 0), ..Default::default()
+					});
 				}
 			});
+
+			frame.fill_text(Text { content:
+				format!("T: ({}, {}), S: {}, FP: ({}, {})",
+				self.translation.x, self.translation.y, self.scaling, self.field_position.x, self.field_position.y),
+				position: Point::new(0.0, 0.0), size: 20.0, ..Default::default()
+			});
+
 		});
 		vec![nodes]
 	}

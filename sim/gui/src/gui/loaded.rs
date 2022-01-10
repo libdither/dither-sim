@@ -87,10 +87,13 @@ impl State {
 				match &tab_message {
 					tabs::Message::NetworkTab(network_tab_message) => match network_tab_message {
 						network_tab::Message::NetMapMessage(netmap_msg) => match netmap_msg {
-							network_map::Message::TriggerNewNode(point) => {
-								let field_position = FieldPosition::new(point.x as i32, point.y as i32);
-								return self.process(Message::AddNode(field_position, NodeType::Machine));
+							network_map::Message::TriggerNewNode(field_position) => {
+								println!("spawning node at point: {:?}", field_position);
+								return self.process(Message::AddNode(field_position.clone(), NodeType::Machine));
 							}
+							/* network_map::Message::CursorMoved(point) => {
+								self.field_position = FieldPosition::new(point.x as i32, point.y as i32);
+							} */
 							_ => {},
 						}
 						_ => {}
@@ -143,9 +146,9 @@ impl State {
 				).push(
 					Button::new(&mut self.top_bar.add_network, Text::new("Add Network"))
         			.on_press(Message::TriggerAddNetwork)
-				).push(
-					Text::new(format!("({}, {})", self.field_position.x, self.field_position.y))
-				)
+				)/* .push(
+					Text::new(format!("({}, {})", self.tabs.network_tab.map.translation.x, self.tabs.network_tab.map.translation.y))
+				) */
 			).push(
 				Container::new(
 					self.tabs.view().map(move |m| Message::TabUpdate(m))

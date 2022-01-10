@@ -35,8 +35,8 @@ impl From<Icon> for char {
 
 pub struct TabBar {
 	active_tab: usize,
-	network_tab: NetworkTab,
-	dither_tab: DitherTab,
+	pub network_tab: NetworkTab,
+	pub dither_tab: DitherTab,
 }
 
 #[derive(Clone, Debug)]
@@ -65,12 +65,6 @@ impl TabBar {
 	}
 
 	pub fn view(&mut self) -> Element<'_, Message> {
-		/* let position = self
-			.settings_tab
-			.settings()
-			.tab_bar_position
-			.unwrap_or_default(); */
-
 		Tabs::new(self.active_tab, Message::TabSelected)
 			.push(self.network_tab.tab_label(), self.network_tab.view().map(|m|Message::NetworkTab(m)))
 			.push(self.dither_tab.tab_label(), self.dither_tab.view().map(|m|Message::DitherTab(m)))
