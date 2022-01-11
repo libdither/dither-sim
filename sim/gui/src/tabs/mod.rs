@@ -14,6 +14,8 @@ use network_tab::NetworkTab;
 pub mod dither_tab;
 use dither_tab::DitherTab;
 
+use crate::gui::loaded;
+
 const ICON_FONT: Font = iced::Font::External {
 	name: "Icons",
 	bytes: include_bytes!("./assets/icon_font.ttf"),
@@ -56,12 +58,13 @@ impl TabBar {
 		}
 	}
 
-	pub fn update(&mut self, message: Message) {
+	pub fn process(&mut self, message: Message) -> Option<loaded::Message> {
 		match message {
 			Message::TabSelected(selected) => self.active_tab = selected,
-			Message::NetworkTab(message) => self.network_tab.update(message),
+			Message::NetworkTab(message) => return self.network_tab.process(message),
 			Message::DitherTab(message) => self.dither_tab.update(message),
 		}
+		None
 	}
 
 	pub fn view(&mut self) -> Element<'_, Message> {

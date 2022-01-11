@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use super::{Icon, Tab};
-use iced::{Align, Button, Color, Column, Container, Element, Length, Row, Text, Vector, button};
+use iced::{Align, Button, Color, Column, Container, Element, Length, Row, Text, Vector, button, canvas::{self, event}, keyboard};
 use iced_aw::TabLabel;
 use petgraph::Undirected;
 use sim::{FieldPosition, NodeType};
@@ -79,7 +79,7 @@ impl NetworkTab {
 		}
 	}
 
-	pub fn update(&mut self, message: Message) {
+	pub fn process(&mut self, message: Message) -> Option<loaded::Message> {
 		match message {
 			Message::AddNode(id, node_type) => {
 				self.map.add_node(NetworkTabNode::new(id, node_type));
@@ -94,15 +94,35 @@ impl NetworkTab {
 			Message::RemoveNode(idx) => {
 				self.map.remove_node(idx);
 			},
-			_ => {}
-			// Handled by 
-			/* Message::NetMapMessage(netmap_msg) => {
-				use crate::network_map::Message as MapMsg;
+			Message::NetMapMessage(netmap_msg) => {
 				match netmap_msg {
-					MapMsg::TriggerNewNode(point) => return loaded::Message::TriggerAddMachine(point)
+					network_map::Message::CanvasEvent(canvas::Event::Keyboard(keyboard_event)) => {
+						match keyboard_event {
+							keyboard::Event::KeyReleased { key_code, modifiers } => {
+								match modifiers {
+									keyboard::Modifiers { shift: false, control: false, alt: false, logo: false } => {
+										match key_code {
+											keyboard::KeyCode::N => {
+												return Some(loaded::Message::AddNode(self.map.field_position().clone(), NodeType::Network));
+											},
+											keyboard::KeyCode::M => {
+												return Some(loaded::Message::AddNode(self.map.field_position().clone(), NodeType::Machine));
+											}
+											_ => {}
+										}
+									}
+									_ => {}
+								}
+							}
+							_ => {}
+						}
+					}
+					_ => {},
 				}
-			}, */
+			}
+			_ => {}
 		}
+		None
 	}
 }
 

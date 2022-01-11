@@ -23,7 +23,6 @@ enum Interaction {
 pub trait NetworkNode {
 	/// Id that can be used to find the node in some other location
 	fn unique_id(&self) -> usize;
-
 	/// Color of the node
 	fn color(&self) -> Color;
 	/// Size of the node
@@ -41,7 +40,7 @@ pub struct NetworkMap<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> {
 	nodes: Graph<N, E, Ty>,
 	unique_id_map: HashMap<usize, NodeIndex>,
 	node_cache: Cache,
-	scaling: f32, // Important: this should not be zero
+	scale: f32, // Important: this should not be zero
 	translation: Vector,
 	interaction: Interaction,
 
@@ -60,12 +59,15 @@ pub enum Message {
 	NodeDragged(usize, Vector),
 
 	// Data output
-	CursorMoved(Point),
+	CanvasEvent(Event),
 }
 impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	const MIN_SCALING: f32 = 0.1;
 	const MAX_SCALING: f32 = 50.0;
 	const SCALING_SPEED: f32 = 30.0;
+
+	pub fn field_position(&self) -> &FieldPosition { &self.field_position }
+	
 	pub fn add_node(&mut self, node: N) {
 		let unique_id = node.unique_id();
 		let node_index = self.nodes.add_node(node);
@@ -92,7 +94,7 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 			nodes: Graph::default(),
 			unique_id_map: HashMap::default(),
 			node_cache: Default::default(),
-			scaling: 1.0,
+			scale: 1.0,
 			translation: Default::default(),
 			interaction: Default::default(),
 			field_position: Default::default(),
@@ -125,33 +127,33 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 		};
 		
 		{
-			let cursor_pos = Point::new(cursor_position.x * (1.0 / self.scaling), cursor_position.y * (1.0 / self.scaling)) - self.translation;
+			let cursor_pos = Point::new(cursor_position.x * (1.0 / self.scale), cursor_position.y * (1.0 / self.scale)) - self.translation;
 			let vec = Vector2::new(cursor_pos.x, cursor_pos.y);
 			self.field_position = vec.map(|v|v as i32);
 		}
 		
 
-		match event {
+		let ret = match event {
+			Event::Keyboard(_) => { (event::Status::Ignored, None) }
 			Event::Mouse(mouse_event) => {
 				match mouse_event {
 					mouse::Event::ButtonPressed(button) => {
+						// Trigger Panning
 						if button == mouse::Button::Left {
 							self.interaction = Interaction::Panning {
 								translation: self.translation,
 								start: cursor_position,
-							}
-						}
-						(event::Status::Captured, None)
+							};
+							(event::Status::Captured, None)
+						} else { (event::Status::Ignored, None) }
+						
 					}
 					mouse::Event::CursorMoved { .. } => {
 						match self.interaction {
+							// Panning
 							Interaction::Panning { translation, start } => {
-								if self.scaling == 0.0 { panic!("scaling should not be zero") }
-								self.translation = translation
-									+ (cursor_position - start)
-										* (1.0 / self.scaling);
-
-								//self.update();
+								if self.scale == 0.0 { panic!("scaling should not be zero") }
+								self.translation = translation + (cursor_position - start) * (1.0 / self.scale);
 							}
 							_ => {},
 						};
@@ -170,12 +172,12 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 					mouse::Event::WheelScrolled { delta } => match delta {
 						mouse::ScrollDelta::Lines { y, .. }
 						| mouse::ScrollDelta::Pixels { y, .. } => {
-							let old_scaling = self.scaling;
+							let old_scaling = self.scale;
 
 							// Change scaling
-							self.scaling = (self.scaling * (1.0 + y / Self::SCALING_SPEED)).max(Self::MIN_SCALING).min(Self::MAX_SCALING);
+							self.scale = (self.scale * (1.0 + y / Self::SCALING_SPEED)).max(Self::MIN_SCALING).min(Self::MAX_SCALING);
 
-							let factor = self.scaling - old_scaling;
+							let factor = self.scale - old_scaling;
 
 								self.translation = self.translation
 									- Vector::new(
@@ -191,30 +193,10 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 					_ => { (event::Status::Ignored, None) },
 				}
 			}
-			Event::Keyboard(keyboard_event) => {
-				match keyboard_event {
-					keyboard::Event::KeyReleased { key_code, modifiers } => {
-						match modifiers {
-							keyboard::Modifiers { shift: false, control: false, alt: false, logo: false } => {
-								match key_code {
-									keyboard::KeyCode::A => {
-										(event::Status::Captured, Some(Message::TriggerNewNode(self.field_position)))
-									}
-									keyboard::KeyCode::R => {
-										self.translation = Default::default();
-										self.scaling = 1.0;
-										(event::Status::Captured, None)
-									}
-									_ => (event::Status::Ignored, None)
-								}
-							}
-							_ => (event::Status::Ignored, None)
-						}
-					}
-					_ => (event::Status::Ignored, None)
-				}
-			}
-		}
+		};
+		if let event::Status::Ignored = ret.0 {
+			(event::Status::Ignored, Some(Message::CanvasEvent(event)))
+		} else { ret }
 	}
 
 	fn draw(&self, bounds: Rectangle, cursor: Cursor) -> Vec<Geometry> {
@@ -226,7 +208,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 
 			frame.with_save(|frame| {
 				//frame.translate(center);
-				frame.scale(self.scaling);
+				frame.scale(self.scale);
 				frame.translate(self.translation);
 				//frame.scale(Cell::SIZE as f32);
 				for node in self.nodes.node_weights() {
@@ -245,7 +227,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 
 			frame.fill_text(Text { content:
 				format!("T: ({}, {}), S: {}, FP: ({}, {})",
-				self.translation.x, self.translation.y, self.scaling, self.field_position.x, self.field_position.y),
+				self.translation.x, self.translation.y, self.scale, self.field_position.x, self.field_position.y),
 				position: Point::new(0.0, 0.0), size: 20.0, ..Default::default()
 			});
 

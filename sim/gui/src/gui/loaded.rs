@@ -55,28 +55,31 @@ impl State {
 			Err(err) => log::error!("Failed to send internet action: {}", err), Ok(_) => {},
 		}
 	}
+	fn process_tabmsg(&mut self, tabmsg: tabs::Message) -> Option<super::Message> {
+		self.tabs.process(tabmsg).map(|msg|self.process(msg)).flatten()
+	}
 	pub fn process(&mut self, message: Message) -> Option<super::Message> {
 		match message {
 			// Handle internet events
 			Message::InternetEvent(internet_event) => {
 				match internet_event {
 					InternetEvent::NewMachine(id) => {
-						self.tabs.update(tabs::Message::NetworkTab(network_tab::Message::AddNode(id, NodeType::Machine))); None
+						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::AddNode(id, NodeType::Machine)))
 					},
 					InternetEvent::NewNetwork(id) => {
-						self.tabs.update(tabs::Message::NetworkTab(network_tab::Message::AddNode(id, NodeType::Network))); None
+						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::AddNode(id, NodeType::Network)))
 					},
 					InternetEvent::NodeInfo(id, info) => {
 						let info = info.expect("expected info");
-						self.tabs.update(tabs::Message::NetworkTab(network_tab::Message::UpdateNode(id, info))); None
+						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::UpdateNode(id, info)))
 					},
 					InternetEvent::MachineInfo(id, machine_info) => {
 						let info = machine_info.expect("expected machine info");
-						self.tabs.update(tabs::Message::NetworkTab(network_tab::Message::UpdateMachine(id, info))); None
+						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::UpdateMachine(id, info)))
 					},
 					InternetEvent::NetworkInfo(id, network_info) => {
 						let info = network_info.expect("expected network info");
-						self.tabs.update(tabs::Message::NetworkTab(network_tab::Message::UpdateNetwork(id, info))); None
+						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::UpdateNetwork(id, info)))
 					},
 					InternetEvent::Error(_) => todo!(),
 					//_ => { println!("Received Internet Event: {:?}", internet_event) }
@@ -84,23 +87,7 @@ impl State {
 			}
 			// Forward Tab events
 			Message::TabUpdate(tab_message) => {
-				match &tab_message {
-					tabs::Message::NetworkTab(network_tab_message) => match network_tab_message {
-						network_tab::Message::NetMapMessage(netmap_msg) => match netmap_msg {
-							network_map::Message::TriggerNewNode(field_position) => {
-								println!("spawning node at point: {:?}", field_position);
-								return self.process(Message::AddNode(field_position.clone(), NodeType::Machine));
-							}
-							/* network_map::Message::CursorMoved(point) => {
-								self.field_position = FieldPosition::new(point.x as i32, point.y as i32);
-							} */
-							_ => {},
-						}
-						_ => {}
-					}
-					_ => {},
-				}
-				self.tabs.update(tab_message); None
+				self.process_tabmsg(tab_message)
 			},
 			// Handle button events
 			Message::ToggleSim(toggle) => {
