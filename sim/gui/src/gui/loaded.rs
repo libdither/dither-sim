@@ -2,7 +2,7 @@ use iced::{Align, Button, Checkbox, Column, Container, Element, Row, Text, Vecto
 use sim::{FieldPosition, InternetAction, InternetEvent, NodeType};
 use futures::channel::mpsc;
 
-use crate::{network_map, subscription::InternetRecipe, tabs::{self, TabBar, network_tab}};
+use crate::{subscription::InternetRecipe, tabs::{self, TabBar, network_tab}};
 
 #[derive(Default)]
 pub struct TopBar {
@@ -58,28 +58,29 @@ impl State {
 	fn process_tabmsg(&mut self, tabmsg: tabs::Message) -> Option<super::Message> {
 		self.tabs.process(tabmsg).map(|msg|self.process(msg)).flatten()
 	}
+	fn process_network_tab_msg(&mut self, network_msg: network_tab::Message) -> Option<super::Message> {
+		self.process_tabmsg(tabs::Message::NetworkTab(network_msg))
+	}
 	pub fn process(&mut self, message: Message) -> Option<super::Message> {
 		match message {
 			// Handle internet events
 			Message::InternetEvent(internet_event) => {
+				log::debug!("received internet event: {:?}", internet_event);
 				match internet_event {
 					InternetEvent::NewMachine(id) => {
-						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::AddNode(id, NodeType::Machine)))
+						self.process_network_tab_msg(network_tab::Message::AddNode(id, NodeType::Machine))
 					},
 					InternetEvent::NewNetwork(id) => {
-						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::AddNode(id, NodeType::Network)))
+						self.process_network_tab_msg(network_tab::Message::AddNode(id, NodeType::Network))
 					},
 					InternetEvent::NodeInfo(id, info) => {
-						let info = info.expect("expected info");
-						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::UpdateNode(id, info)))
+						self.process_network_tab_msg(network_tab::Message::UpdateNode(id, info))
 					},
-					InternetEvent::MachineInfo(id, machine_info) => {
-						let info = machine_info.expect("expected machine info");
-						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::UpdateMachine(id, info)))
+					InternetEvent::MachineInfo(id, info) => {
+						self.process_network_tab_msg(network_tab::Message::UpdateMachine(id, info))
 					},
-					InternetEvent::NetworkInfo(id, network_info) => {
-						let info = network_info.expect("expected network info");
-						self.process_tabmsg(tabs::Message::NetworkTab(network_tab::Message::UpdateNetwork(id, info)))
+					InternetEvent::NetworkInfo(id, info) => {
+						self.process_network_tab_msg(network_tab::Message::UpdateNetwork(id, info))
 					},
 					InternetEvent::Error(_) => todo!(),
 					//_ => { println!("Received Internet Event: {:?}", internet_event) }

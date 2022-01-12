@@ -3,12 +3,11 @@
 /// Internet Simulation Module
 /// Contains all necessary componenets to create a virtual network on a given computer and spawn devices running the Dither protocol
 
-use std::{fmt::{Debug}, time::Duration};
+use std::fmt::{Debug};
 use std::ops::Range;
 
-use async_std::task;
 use petgraph::{graph::NodeIndex, Graph};
-use netsim_embed::{Ipv4Range, Machine, MachineId, Network};
+use netsim_embed::Ipv4Range;
 use serde::Deserialize;
 
 use device::{DeviceCommand, DeviceEvent};
@@ -18,8 +17,7 @@ mod netsim_ext;
 mod internet_node;
 use netsim_ext::*;
 
-use self::internet_node::InternetMachineConnection;
-pub use self::internet_node::{FieldPosition, InternetMachine, InternetNode, NodeType, NodeInfo, MachineInfo, NetworkInfo, Latency};
+pub use self::internet_node::{FieldPosition, InternetNetwork, InternetMachine, InternetNode, NodeType, NodeInfo, MachineInfo, NetworkInfo, Latency};
 
 /// All Dither Nodes and Routing Nodes will be organized on a field
 /// Internet Simulation Field Dimensions (Measured in Nanolightseconds): 64ms x 26ms
@@ -28,8 +26,6 @@ pub const FIELD_DIMENSIONS: (Range<i32>, Range<i32>) = (-320000..320000, -130000
 /// Cache file to save network configuration
 pub const DEFAULT_CACHE_FILE: &str = "./net.cache";
 
-/// Default internal latency (measured in millilightseconds)
-pub const DEFAULT_INTERNAL_LATENCY: u64 = 20;
 /// Max number of networks allowed (represents how many slices the global IP space is split into).
 pub const MAX_NETWORKS: u16 = u16::MAX;
 
@@ -67,11 +63,11 @@ pub enum InternetEvent {
 	/// Net network was created
 	NewNetwork(usize),
 	/// General Node info 
-	NodeInfo(usize, Option<NodeInfo>),
+	NodeInfo(usize, NodeInfo),
 	/// General machine info
-	MachineInfo(usize, Option<MachineInfo>),
+	MachineInfo(usize, MachineInfo),
 	/// General network info
-	NetworkInfo(usize, Option<NetworkInfo>),
+	NetworkInfo(usize, NetworkInfo),
 
 	/// Error
 	Error(String),
@@ -84,6 +80,13 @@ pub enum InternetError {
 	EventReceiverClosed,
 	#[error("Action Sender Closed")]
 	ActionSenderClosed,
+	#[error("Device Command Sender Closed")]
+	DeviceCommandSenderClosed,
+	#[error("Invalid Node Type for {index}, expected: {expected:?}")]
+	InvalidNodeType { index: usize, expected: NodeType },
+	#[error("Unknown Node index: {index}")]
+	UnknownNode { index: usize },
+
 	#[error("Spawned Too many networks, not enough addresses (see MAX_NETWORKS)")]
 	TooManyNetworks,
 
@@ -95,6 +98,7 @@ pub enum InternetError {
 /* #[derive(Derivative, Serialize, Deserialize)]
 #[derivative(Debug)] */
 pub struct Internet {
+	// DO NOT CALL .remove_node()!!! (indicies should be static)
 	network: Graph<InternetNode, Wire>,
 
 	action_receiver: Option<mpsc::Receiver<InternetAction>>,
@@ -103,7 +107,7 @@ pub struct Internet {
 
 	device_exec: String,
 
-	ip_range_iter: Box<dyn Iterator<Item = Ipv4Range> + Send>,
+	ip_range_iter: Box<dyn Iterator<Item = Ipv4Range> + Send + Sync>,
 }
 
 impl Internet {
@@ -122,6 +126,15 @@ impl Internet {
 			ip_range_iter: Box::new(Ipv4Range::global_split(MAX_NETWORKS as u32)),
 		}, event_receiver, action_sender_ret)
 	}
+	fn node(&self, index: usize) -> Result<&InternetNode, InternetError> {
+		self.network.node_weight(NodeIndex::new(index)).ok_or(InternetError::UnknownNode { index })
+	}
+	pub fn machine(&self, index: usize) -> Result<&InternetMachine, InternetError> {
+		self.node(index)?.machine().ok_or(InternetError::InvalidNodeType { index, expected: NodeType::Machine })
+	}
+	pub fn network(&self, index: usize) -> Result<&InternetNetwork, InternetError> {
+		self.node(index)?.network().ok_or(InternetError::InvalidNodeType { index, expected: NodeType::Network })
+	}
 	/// Run network function
 	/// IMPORTANT: This function must be called from an unshare() context (i.e. a kernel virtual network)
 	pub async fn run(mut self) {
@@ -135,6 +148,7 @@ impl Internet {
 					InternetAction::AddNetwork(position) => {
 						let idx: NodeIndex = self.spawn_network(position).await?;
 						self.send_event(InternetEvent::NewNetwork(idx.index())).await?;
+						self.action(InternetAction::GetNodeInfo(idx.index())).await?;
 						log::debug!("Added Network Node: {:?}", idx);
 					}
 					InternetAction::AddMachine(position) => {
@@ -144,9 +158,15 @@ impl Internet {
 						log::debug!("Added Machine Node: {:?}", idx);
 					}
 					InternetAction::GetNodeInfo(index) => {
-						let node = self.network.node_weight(NodeIndex::<u32>::new(index));
-						let node_info = node.map(|n|n.gen_node_info());
-						self.send_event(InternetEvent::NodeInfo(index, node_info)).await?;
+						self.send_event(InternetEvent::NodeInfo(index, self.node(index)?.node_info())).await?;
+					}
+					InternetAction::GetMachineInfo(index) => {
+						// This is sent back from the Device through DeviceEvents
+						self.machine(index)?.request_machine_info()?;
+					}
+					InternetAction::GetNetworkInfo(index) => {
+						self.send_event(InternetEvent::NetworkInfo(index, self.network(index)?.network_info())).await?;
+
 					}
 					_ => println!("Unimplemented Action")
 				}
@@ -170,35 +190,17 @@ impl Internet {
 	async fn spawn_machine(&mut self, position: FieldPosition) -> NodeIndex {
 		let machine_id = self.network.node_count();
 
-		let (plug_to_wire, machine_plug) = netsim_embed::wire();
-		
-		let (machine, mut device_event_receiver) = Machine::new(MachineId(machine_id), machine_plug, async_process::Command::new(&self.device_exec)).await;
-		let mut action_sender = self.action_sender.clone();
-		let event_join_handle = task::spawn(async move { 
-			while let Some(device_event) = device_event_receiver.next().await {
-				action_sender.send(InternetAction::DeviceEvent(machine_id, device_event)).await.expect("device action sender crashed");
-			}
-		});
+		let machine = InternetMachine::new(machine_id, self.action_sender.clone(), &self.device_exec).await;
 
-		let (outgoing_plug, plug_from_wire) = netsim_embed::wire();
-		let wire = Wire { delay: Duration::from_millis(DEFAULT_INTERNAL_LATENCY) };
-		let internet_machine = InternetMachine {
-			machine,
-			event_join_handle,
-			connection_status: InternetMachineConnection::Unconnected(outgoing_plug),
-			internal_wire: wire.connect(plug_to_wire, plug_from_wire),
-			internal_latency: DEFAULT_INTERNAL_LATENCY,
-		};
-
-		let node = InternetNode::from_machine(internet_machine, position);
+		let node = InternetNode::from_machine(machine, position);
 		self.network.add_node(node)
 	}
 	/// Spawn network at position
 	async fn spawn_network(&mut self, position: FieldPosition) -> Result<NodeIndex, InternetError> {
-		let id = netsim_embed::NetworkId(self.network.node_count());
+		let id = self.network.node_count();
 		let range = self.ip_range_iter.next().ok_or(InternetError::TooManyNetworks)?;
 
-		let network = Network::new(id, range);
+		let network = InternetNetwork::new(id, range);
 		let node = InternetNode::from_network(network, position);
 		Ok(self.network.add_node(node))
 	}

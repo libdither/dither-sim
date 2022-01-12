@@ -29,14 +29,16 @@ impl NetworkNode for NetworkTabNode {
 			NodeType::Machine => Color::BLACK,
 			NodeType::Network => Color::from_rgb(0.5, 0.5, 0.5),
 		}
-		
 	}
 	fn size(&self) -> u32 {
 		30
 	}
 	fn position(&self) -> Vector {
-		
 		Vector::new(self.field_position.x as f32, self.field_position.y as f32)
+	}
+	fn text(&self) -> Option<iced::canvas::Text> {
+		None
+		//Text { content: "" }
 	}
 }
 #[derive(Clone, Debug)]
@@ -134,7 +136,6 @@ impl Tab for NetworkTab {
 	}
 
 	fn tab_label(&self) -> TabLabel {
-		//TabLabel::Text(self.title())
 		TabLabel::IconText(Icon::CentralizedNetwork.into(), self.title())
 	}
 

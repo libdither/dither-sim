@@ -29,6 +29,8 @@ pub trait NetworkNode {
 	fn size(&self) -> u32;
 	/// Position on the map of the node
 	fn position(&self) -> Vector;
+	/// Text drawn over node
+	fn text(&self) -> Option<Text>;
 }
 pub trait NetworkEdge {
 	fn color(&self) -> Color;
@@ -46,6 +48,7 @@ pub struct NetworkMap<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> {
 
 	field_position: FieldPosition,
 }
+
 #[derive(Debug, Clone)]
 pub enum Message {
 	// Input
@@ -67,7 +70,7 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	const SCALING_SPEED: f32 = 30.0;
 
 	pub fn field_position(&self) -> &FieldPosition { &self.field_position }
-	
+
 	pub fn add_node(&mut self, node: N) {
 		let unique_id = node.unique_id();
 		let node_index = self.nodes.add_node(node);
