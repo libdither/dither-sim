@@ -9,7 +9,6 @@ use crate::{NodeID, RouteCoord};
 /// Address that allows a Node to connect to another Node over a network implementation. This might be an IP address, a multiaddr, or just a number.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Archive, Serialize, Deserialize, serde::Serialize, serde::Deserialize)]
 #[archive_attr(derive(bytecheck::CheckBytes))]
-
 #[repr(transparent)]
 pub struct Address(pub Vec<u8>);
 
@@ -35,24 +34,37 @@ pub enum ConnectionResponse {
 	Error(String),
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NodeInfo {
+	pub node_id: NodeID,
+	pub route_coord: Option<RouteCoord>,
+	pub public_addr: Option<Address>,
+	pub remotes: usize,
+	pub active_remotes: usize,
+}
+
 /// Actions that can be sent to the Network Implementation (Most of these are temporary)
+/// [External] represents the program that interacts with this instance of the Dither API
+/// This represents the system-facing protocol used by the p2p network implementation in addition to externals
 #[derive(Debug)]
 pub enum NetAction {
 	/// From Node
-	/// Publish Route to "fake" DHT (will be replaced with real DHT kademlia DHT implementation in future)
+	/// [Dither -> External] Publish Route to "fake" DHT (will be replaced with real kademlia DHT or reverse hash lookup implementation )
 	PublishRouteCoords(NodeID, RouteCoord),
-	/// Query Route Coords from DHT
+	/// [Dither -> Wrapper] Query Route Coords from "fake" DHT
 	QueryRouteCoord(NodeID),
-	/// Establish a Connection to a remote
-	Connect(Address),
-
-	/// From Internet
-	/// Response for QueryRouteCoord Action
+	/// [External/ -> Dither] Response for QueryRouteCoord Action
 	QueryRouteCoordResponse(NodeID, RouteCoord),
-	/// Tell node about new address from network implementation.
-	UpdateAddress(Address),
-	/// Response for Connection
+
+	/// [Dither -> External/Network] Establish a Connection via a multiaddress (interpreted by network impl)
+	Connect(Address),
+	/// [External/Network -> Dither] Repond to a connection request
 	ConnectResponse(ConnectionResponse),
-	/// Handle Incoming Connection
-	Incoming(Connection)
+	/// [External/Network -> Dither] Notify incoming connection
+	Incoming(Connection),
+
+	/// [External/System -> Dither] Request info about Dither Node
+	GetNodeInfo,
+	/// [Dither -> External/System] Info about node
+	NodeInfo(NodeInfo),	
 }

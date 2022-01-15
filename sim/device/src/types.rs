@@ -1,20 +1,16 @@
-
 use serde::{Serialize, Deserialize};
-use std::{fmt::Display, net::Ipv4Addr, str::FromStr};
+use std::{fmt::Display, str::FromStr};
 
-use libdither::{commands::DitherCommand, node::{NodeID, RouteCoord}};
+use libdither::commands::{DitherCommand, DitherEvent};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum DeviceCommand {
-	Connect(Ipv4Addr, u16),
 	DitherCommand(DitherCommand),
-
-	GetDeviceInfo,
-	DeviceInfo(RouteCoord, NodeID),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum DeviceEvent {
+	DitherEvent(DitherEvent),
 	Debug(String),
 	Error(String),
 }

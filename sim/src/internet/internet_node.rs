@@ -1,13 +1,13 @@
 use std::{net::Ipv4Addr, time::Duration};
 
 use async_std::task::{self, JoinHandle};
-use device::{Address, DeviceCommand, DeviceEvent};
+use device::{Address, DeviceCommand, DeviceEvent, DitherCommand, DitherEvent};
 use futures::{SinkExt, StreamExt, channel::mpsc};
 use nalgebra::Vector2;
 use netsim_embed::{Ipv4Range, Ipv4Route, Machine, MachineId, Network, NetworkId, Plug};
 use node::{NodeID, RouteCoord};
 
-use crate::{InternetAction, InternetError};
+use crate::internet::{InternetAction, InternetError};
 
 use super::netsim_ext::{Wire, WireHandle};
 
@@ -39,7 +39,7 @@ impl InternetMachine {
 		//let mut action_sender = self.action_sender.clone();
 		let event_join_handle = task::spawn(async move { 
 			while let Some(device_event) = device_event_receiver.next().await {
-				internet_action_sender.send(InternetAction::DeviceEvent(machine_id, device_event)).await.expect("device action sender crashed");
+				internet_action_sender.send(InternetAction::HandleDeviceEvent(machine_id, device_event)).await.expect("device action sender crashed");
 			}
 		});
 
@@ -63,7 +63,7 @@ impl InternetMachine {
 		self.internal_latency
 	}
 	pub fn request_machine_info(&self) -> Result<(), InternetError> {
-		self.machine.tx.unbounded_send(DeviceCommand::GetDeviceInfo).map_err(|_|InternetError::DeviceCommandSenderClosed)
+		self.machine.tx.unbounded_send(DeviceCommand::DitherCommand(DitherCommand::GetNodeInfo)).map_err(|_|InternetError::DeviceCommandSenderClosed)
 	}
 }
 
@@ -76,10 +76,11 @@ pub struct NodeInfo {
 }
 #[derive(Debug, Clone)]
 pub struct MachineInfo {
-	pub route_coord: RouteCoord,
-	pub listening_addr: Address,
-	pub public_addr: Address,
+	pub route_coord: Option<RouteCoord>,
+	pub public_addr: Option<Address>,
 	pub node_id: NodeID,
+	pub remotes: usize,
+	pub active_remotes: usize,
 }
 
 pub struct InternetNetwork {

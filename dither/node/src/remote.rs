@@ -14,7 +14,7 @@ pub enum RemoteAction {
 	/// From Main Thread
 	/// Handle Connection passed through main node from network
 	HandleConnection(Connection),
-	/// Query Route Coord from Network DHT, will be handled by actually DHT in future.
+	/// Query Route Coord from Route Coord Lookup (see NetAction)
 	RouteCoordQuery(RouteCoord),
 
 	/// From Session Thread
@@ -47,6 +47,7 @@ pub struct RemoteNode {
 	/// Known Route Coordinate to communicate with remote node.
 	route_coord: Option<RouteCoord>,
 
+	/// Current encrypted channel to remote
 	session: Option<Session>,
 
 	action_sender: Sender<RemoteAction>,

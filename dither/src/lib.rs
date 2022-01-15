@@ -1,5 +1,7 @@
 #![allow(dead_code)]
+#![feature(try_blocks)]
 
+pub use commands::{DitherCommand, DitherEvent};
 use futures::StreamExt;
 use libp2p::{Transport, core::transport::{ListenerEvent, upgrade}, identity, mplex, noise, tcp::TokioTcpConfig};
 
@@ -13,22 +15,24 @@ pub mod commands;
 
 pub struct DitherCore {
 	keypair: identity::Keypair,
-	pub peer_id: PeerId,
+	peer_id: PeerId,
 	stored_node: Option<Node>,
 	node_network_receiver: mpsc::Receiver<NetAction>,
-	pub node_action_sender: mpsc::Sender<NodeAction>,
+	node_action_sender: mpsc::Sender<NodeAction>,
 
-	pub listen_addr: Multiaddr,
+	listen_addr: Multiaddr,
+	event_sender: mpsc::Sender<DitherEvent>,
 }
 
 impl DitherCore {
-	pub fn init(listen_addr: Multiaddr) -> anyhow::Result<DitherCore> {
+	pub fn init(listen_addr: Multiaddr) -> anyhow::Result<(DitherCore, mpsc::Receiver<DitherEvent>)> {
 		let keypair = identity::Keypair::generate_ed25519();
 		let peer_id = PeerId::from(keypair.public());
 
 		let (tx, node_network_receiver) = mpsc::channel(20);
-		let node = Node::new(peer_id.to_bytes(), tx);
+		let node = Node::new(peer_id.to_bytes().into(), tx);
 		let node_action_sender = node.action_sender.clone();
+		let (event_sender, dither_event_receiver) = mpsc::channel(20);
 		let core = DitherCore {
 			keypair,
 			peer_id,
@@ -36,11 +40,12 @@ impl DitherCore {
 			node_network_receiver,
 			node_action_sender,
 			listen_addr,
+			event_sender,
 		};
 
-		Ok(core)
+		Ok((core, dither_event_receiver))
 	}
-	pub async fn run(mut self) -> anyhow::Result<Self> {
+	pub async fn run(mut self, mut dither_command_receiver: mpsc::Receiver<DitherCommand>) -> anyhow::Result<Self> {
 		let join = if let Some(node) = self.stored_node.take() {
 			node.spawn()
 		} else { return Ok(self); };
@@ -57,18 +62,28 @@ impl DitherCore {
 			.authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
 			.multiplex(mplex::MplexConfig::new())
 			.boxed();
-		
 	
 		let mut listener = transport.clone().listen_on(self.listen_addr.clone()).expect("listener didn't open");
 	
 		let node_network_receiver = &mut self.node_network_receiver;
 		loop {
 			tokio::select! {
+				dither_command = dither_command_receiver.recv() => {
+					let result: anyhow::Result<()> = try {
+						match dither_command.ok_or(anyhow::anyhow!("failed to receive dither command"))? {
+							DitherCommand::GetNodeInfo => self.node_action_sender.try_send(NodeAction::NetAction(NetAction::GetNodeInfo))?,
+						}
+					};
+					if let Err(err) = result { log::error!("Dither Command error: {}", err) }
+				}
 				net_action = node_network_receiver.recv() => { // Listen for network actions from Node impl
 					if let Some(net_action) = net_action {
 						match net_action {
 							NetAction::Incoming(connection) => {
 								println!("Received Connection from: {:?}", connection);
+							}
+							NetAction::NodeInfo(node_info) => {
+								self.event_sender.try_send(DitherEvent::NodeInfo(node_info)).expect("failed to send dither event");
 							}
 							_ => {},
 						}

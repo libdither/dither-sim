@@ -10,7 +10,7 @@ use petgraph::{graph::NodeIndex, Graph};
 use netsim_embed::Ipv4Range;
 use serde::Deserialize;
 
-use device::{DeviceCommand, DeviceEvent};
+use device::{DeviceCommand, DeviceEvent, DitherEvent};
 use futures::{SinkExt, StreamExt, channel::mpsc};
 
 mod netsim_ext;
@@ -52,7 +52,7 @@ pub enum InternetAction {
 	DeviceCommand(usize, DeviceCommand),
 
 	// From Devices
-	DeviceEvent(usize, DeviceEvent)
+	HandleDeviceEvent(usize, DeviceEvent)
 }
 
 /// Internet Simulation Events, use this structure to listen to events from the simulation thread
@@ -149,12 +149,14 @@ impl Internet {
 						let idx: NodeIndex = self.spawn_network(position).await?;
 						self.send_event(InternetEvent::NewNetwork(idx.index())).await?;
 						self.action(InternetAction::GetNodeInfo(idx.index())).await?;
+						self.action(InternetAction::GetNetworkInfo(idx.index())).await?;
 						log::debug!("Added Network Node: {:?}", idx);
 					}
 					InternetAction::AddMachine(position) => {
 						let idx = self.spawn_machine(position).await;
 						self.send_event(InternetEvent::NewMachine(idx.index())).await?;
 						self.action(InternetAction::GetNodeInfo(idx.index())).await?;
+						self.action(InternetAction::GetMachineInfo(idx.index())).await?;
 						log::debug!("Added Machine Node: {:?}", idx);
 					}
 					InternetAction::GetNodeInfo(index) => {
@@ -168,7 +170,18 @@ impl Internet {
 						self.send_event(InternetEvent::NetworkInfo(index, self.network(index)?.network_info())).await?;
 
 					}
-					_ => println!("Unimplemented Action")
+					InternetAction::HandleDeviceEvent(index, DeviceEvent::DitherEvent(dither_event)) => {
+						match dither_event {
+							DitherEvent::NodeInfo(device::NodeInfo { route_coord, node_id, public_addr, remotes, active_remotes } ) => {
+								//let machine = self.machine(index)?;
+								self.send_event(InternetEvent::MachineInfo(index, MachineInfo {
+									route_coord, public_addr, node_id, remotes, active_remotes
+								})).await?;
+							}
+							_ => log::error!("Unhandled Device Event")
+						}
+					}
+					_ => log::error!("Unimplemented Internet Action")
 				}
 			};
 			if let Err(err) = res {

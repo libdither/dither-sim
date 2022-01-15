@@ -10,14 +10,11 @@ use tokio::sync::mpsc;
 mod types;
 pub use types::{DeviceCommand, DeviceEvent};
 
+use anyhow::{Context, anyhow};
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
 	let (event_sender, mut event_receiver) = mpsc::channel(20);
-	macro_rules! resp_error{
-		($($arg:tt)*) => {{
-			let _ = event_sender.send(DeviceEvent::Error(format!($($arg)*))).await;
-		}}
-	}
 	macro_rules! resp_debug{
 		($($arg:tt)*) => {{
 			let _ = event_sender.send(DeviceEvent::Debug(format!($($arg)*))).await;
@@ -48,40 +45,39 @@ async fn main() -> anyhow::Result<()> {
 	});
 	
 	let listen_addr = libdither::Multiaddr::from_str("/ip4/0.0.0.0/tcp/3000")?;
-	let dither_core = DitherCore::init(listen_addr)?;
+	let (dither_core, mut dither_event_receiver) = DitherCore::init(listen_addr)?;
+	let (dither_command_sender, dither_command_receiver) = mpsc::channel(20);
 	let dither_core_thread = tokio::spawn(async move {
-		dither_core.run().await
+		dither_core.run(dither_command_receiver).await
 	});
 
-	// Main Thread
+	// Main Thread for Device
 	let main_thread = tokio::spawn(async move {
-		tokio::select! {
-			command = command_receiver.recv() => {
-				let result: anyhow::Result<()> = try {
-					if let Some(command) = command {
-						resp_debug!("Received valid DeviceCommand: {:?}", command);
-						match command {
-							DeviceCommand::Connect(ip, port) => {
-								resp_debug!("Received command to connect to: {:?}:{:?}", ip, port);
-								//event_sender.send(DeviceEvent::Error(format!("Received command to connect to {:?}:{:?}", ip, port))).await;
-							},
-							DeviceCommand::DitherCommand(dither_command) => {
-								match dither_command {
-									DitherCommand::Bootstrap(id, addr) => {
-										resp_debug!("Received command to bootstrap to Node({:?}) at {:?}", id, String::from_utf8_lossy(&addr.0));
-									}
-									_ => { resp_error!("DitherCommand: Unimplemented command: {:?}", dither_command) }
-								}
-							},
-							_ => resp_error!("Unimplemented command: {:?}", command)
+		loop {
+			tokio::select! {
+				dither_event = dither_event_receiver.recv() => {
+					println!("Received event: {dither_event:?}");
+					let result: anyhow::Result<()> = try {
+						match dither_event.ok_or(anyhow!("failed to receive DitherEvent"))? {
+							event => event_sender.try_send(DeviceEvent::DitherEvent(event)).context("failed to send device event")?
 						}
-					}
-				};
-				if let Err(err) = result {
-					resp_error!("Error: {:?}", err);
+					};
+					if let Err(err) = result { event_sender.try_send(DeviceEvent::Error(format!("{:?}", err))).unwrap(); }
+				}
+				command = command_receiver.recv() => {
+					let result: anyhow::Result<()> = try {
+						match command.ok_or(anyhow!("Failed to receive DeviceCommand"))? {
+							DeviceCommand::DitherCommand(dither_command) => {
+								dither_command_sender.try_send(dither_command)?;
+							},
+							command => Err(anyhow!("Unimplemented DeviceCommand: {:?}", command))?,
+						}
+					};
+					if let Err(err) = result { event_sender.try_send(DeviceEvent::Error(format!("{:?}", err))).unwrap(); }
 				}
 			}
 		}
+		
 	});
 
 	let rets = tokio::join!(parse_input_commands.join().expect("input command thread failed"), parse_events, main_thread, dither_core_thread);

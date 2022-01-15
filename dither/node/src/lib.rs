@@ -131,6 +131,8 @@ pub enum NodeError {
 	RemoteNodeError(#[from] RemoteNodeError),
 	#[error("RemoteNode mpsc channel backed up!")]
 	SendRemoteActionError(#[from] mpsc::error::SendError<RemoteAction>),
+	#[error("Failed to send Network Action")]
+	SendNetActionError(#[from] mpsc::error::SendError<NetAction>),
 
 	// When Accessing Remotes
 	#[error("Unknown Node Index: {node_idx:?}")]
@@ -278,18 +280,33 @@ impl Node {
 				match action {
 					NodeAction::NetAction(net_action) => {
 						match net_action {
-							NetAction::Incoming(connection) => {
-								self.handle_connection(connection).await?;
-							},
-							NetAction::QueryRouteCoordResponse(node_id, route_coord) => {
-								let node_idx = self.index_by_node_id(&node_id)?;
-								self.remote_mut(node_idx)?.action(node_action, RemoteAction::RouteCoordQuery(route_coord)).await?;
-							}
+							// Handle requested connection
 							NetAction::ConnectResponse(conn_resp) => {
 								if let ConnectionResponse::Established(connection) = conn_resp {
 									self.handle_connection(connection).await?;
 								}
 							},
+							// Handle unprompted connection
+							NetAction::Incoming(connection) => {
+								self.handle_connection(connection).await?;
+							},
+							// Handle route coord lookup response
+							NetAction::QueryRouteCoordResponse(node_id, route_coord) => {
+								let node_idx = self.index_by_node_id(&node_id)?;
+								self.remote_mut(node_idx)?.action(node_action, RemoteAction::RouteCoordQuery(route_coord)).await?;
+							}
+
+							// Handle Info Requests from external program
+							NetAction::GetNodeInfo => {
+								self.network_action.send(NetAction::NodeInfo(net::NodeInfo {
+									node_id: self.node_id.clone(),
+									route_coord: self.route_coord,
+									public_addr: self.net_addr.clone(),
+									remotes: self.remotes.len(),
+									active_remotes: self.direct_sorted.len(),
+								})).await?;
+							}
+							
 							_ => { log::error!("Received Invalid NetAction: {:?}", net_action) }
 						}
 					}
