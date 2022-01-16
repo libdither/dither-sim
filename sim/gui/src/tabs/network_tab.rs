@@ -81,6 +81,11 @@ impl NetworkTab {
 		}
 	}
 
+	fn mouse_field_position(&self) -> FieldPosition {
+		let cursor_pos = self.map.global_cursor_position();
+		FieldPosition::new(cursor_pos.x as i32, cursor_pos.y as i32)
+	}
+
 	pub fn process(&mut self, message: Message) -> Option<loaded::Message> {
 		match message {
 			Message::AddNode(id, node_type) => {
@@ -105,10 +110,10 @@ impl NetworkTab {
 									keyboard::Modifiers { shift: false, control: false, alt: false, logo: false } => {
 										match key_code {
 											keyboard::KeyCode::N => {
-												return Some(loaded::Message::AddNode(self.map.field_position().clone(), NodeType::Network));
+												return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Network));
 											},
 											keyboard::KeyCode::M => {
-												return Some(loaded::Message::AddNode(self.map.field_position().clone(), NodeType::Machine));
+												return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Machine));
 											}
 											_ => {}
 										}

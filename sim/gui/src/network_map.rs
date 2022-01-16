@@ -31,6 +31,13 @@ pub trait NetworkNode {
 	fn position(&self) -> Vector;
 	/// Text drawn over node
 	fn text(&self) -> Option<Text>;
+
+	/// Check if this node is being mouse over
+	fn check_mouseover(&self, cursor_position: &Point) -> bool {
+		let size = self.size() as f32;
+		let diff = *cursor_position - self.position();
+		(diff.x * diff.x + diff.y * diff.y) < size * size
+	}
 }
 pub trait NetworkEdge {
 	fn color(&self) -> Color;
@@ -46,7 +53,8 @@ pub struct NetworkMap<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> {
 	translation: Vector,
 	interaction: Interaction,
 
-	field_position: FieldPosition,
+	global_cursor_position: Point, // Position of cursor in the global coordinate plane (i.e. before scale and translation)
+	hovered_node: Option<usize>, // Current node that is being moused over
 }
 
 #[derive(Debug, Clone)]
@@ -69,7 +77,7 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	const MAX_SCALING: f32 = 50.0;
 	const SCALING_SPEED: f32 = 30.0;
 
-	pub fn field_position(&self) -> &FieldPosition { &self.field_position }
+	pub fn global_cursor_position(&self) -> &Point { &self.global_cursor_position }
 
 	pub fn add_node(&mut self, node: N) {
 		let unique_id = node.unique_id();
@@ -100,7 +108,8 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 			scale: 1.0,
 			translation: Default::default(),
 			interaction: Default::default(),
-			field_position: Default::default(),
+			global_cursor_position: Default::default(),
+			hovered_node: None,
 		}
 	}
 	pub fn view<'a>(&'a mut self) -> Element<'a, Message> {
@@ -128,12 +137,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 		} else {
 			return (event::Status::Ignored, None);
 		};
-		
-		{
-			let cursor_pos = Point::new(cursor_position.x * (1.0 / self.scale), cursor_position.y * (1.0 / self.scale)) - self.translation;
-			let vec = Vector2::new(cursor_pos.x, cursor_pos.y);
-			self.field_position = vec.map(|v|v as i32);
-		}
+		self.global_cursor_position = Point::new(cursor_position.x * (1.0 / self.scale), cursor_position.y * (1.0 / self.scale)) - self.translation;
 		
 
 		let ret = match event {
@@ -142,14 +146,20 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 				match mouse_event {
 					mouse::Event::ButtonPressed(button) => {
 						// Trigger Panning
-						if button == mouse::Button::Left {
-							self.interaction = Interaction::Panning {
-								translation: self.translation,
-								start: cursor_position,
-							};
-							(event::Status::Captured, None)
-						} else { (event::Status::Ignored, None) }
-						
+						match button {
+							mouse::Button::Left => {
+								if let Some(hovered) = self.hovered_node {
+									(event::Status::Captured, Some(Message::NodeClicked(hovered)))
+								} else {
+									self.interaction = Interaction::Panning {
+										translation: self.translation,
+										start: cursor_position,
+									};
+									(event::Status::Captured, None)
+								}
+							}
+							_ => (event::Status::Ignored, None)
+						}
 					}
 					mouse::Event::CursorMoved { .. } => {
 						match self.interaction {
@@ -157,19 +167,23 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 							Interaction::Panning { translation, start } => {
 								if self.scale == 0.0 { panic!("scaling should not be zero") }
 								self.translation = translation + (cursor_position - start) * (1.0 / self.scale);
+								self.update();
+								(event::Status::Captured, None)
 							}
-							_ => {},
-						};
-
-						self.update();
-						
-
-						let event_status = match self.interaction {
-							Interaction::None => event::Status::Ignored,
-							_ => event::Status::Captured,
-						};
-
-						(event_status, None)
+							_ => {
+								let previous_hovered = self.hovered_node;
+								self.hovered_node = None;
+								for node in self.nodes.node_weights() {
+									if node.check_mouseover(&self.global_cursor_position) {
+										let selected_id = node.unique_id();
+										// sets node_selected if it is None or Some(value less than selected_id)
+										if self.hovered_node < Some(selected_id) { self.hovered_node = Some(selected_id) }
+									}
+								}
+								let status = if previous_hovered != self.hovered_node { self.update(); event::Status::Captured } else { event::Status::Ignored };
+								(status, None)
+							},
+						}
 					}
 					// Set scaling
 					mouse::Event::WheelScrolled { delta } => match delta {
@@ -204,6 +218,9 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 
 	fn draw(&self, bounds: Rectangle, cursor: Cursor) -> Vec<Geometry> {
 		let center = bounds.center(); let center = Vector::new(center.x, center.y);
+		let cursor_position = cursor.position();
+
+		let mut selected: Option<usize> = None; // selected node
 
 		let nodes = self.node_cache.draw(bounds.size(), |frame| {
 			let background = Path::rectangle(Point::ORIGIN, frame.size());
@@ -215,14 +232,20 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 				frame.translate(self.translation);
 				//frame.scale(Cell::SIZE as f32);
 				for node in self.nodes.node_weights() {
-					let position = node.position();
-					let point = Point::new(position.x as f32, position.y as f32);
+					let point = {
+						let position = node.position();
+						Point::new(position.x as f32, position.y as f32)
+					};
+					let radius = node.size() as f32;
 					
-					frame.fill(&Path::circle(point.clone(), node.size() as f32), Color::BLACK);
+					if self.hovered_node == Some(node.unique_id()) {
+						frame.fill(&Path::circle(point.clone(), radius + 5.0), Color::from_rgb8(255, 255, 0));
+					}
+					frame.fill(&Path::circle(point.clone(), radius), Color::BLACK);
 
 					frame.fill_text(Text { content:
-						format!("P: ({}, {})",
-						position.x, position.y),
+						format!("ID: {}",
+						node.unique_id()),
 						position: point, size: 20.0, color: Color::from_rgb8(255, 0, 0), ..Default::default()
 					});
 				}
@@ -230,7 +253,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 
 			frame.fill_text(Text { content:
 				format!("T: ({}, {}), S: {}, FP: ({}, {})",
-				self.translation.x, self.translation.y, self.scale, self.field_position.x, self.field_position.y),
+				self.translation.x, self.translation.y, self.scale, self.global_cursor_position.x, self.global_cursor_position.y),
 				position: Point::new(0.0, 0.0), size: 20.0, ..Default::default()
 			});
 

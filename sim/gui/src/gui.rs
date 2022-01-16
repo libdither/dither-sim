@@ -35,7 +35,7 @@ impl Application for NetSimApp {
 	fn new(_flags: NetSimAppSettings) -> (Self, Command<Self::Message>) {
 		(
 			NetSimApp::Loading(loading::State::default()),
-			Command::none(),
+			Command::from(async { Self::Message::LoadingMessage(loading::Message::TriggerLoad) }), // Trigger netsim load on startup
 		)
 	}
 
