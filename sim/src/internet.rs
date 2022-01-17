@@ -178,7 +178,7 @@ impl Internet {
 									route_coord, public_addr, node_id, remotes, active_remotes
 								})).await?;
 							}
-							_ => log::error!("Unhandled Device Event")
+							//_ => log::error!("Unhandled Device Event")
 						}
 					}
 					_ => log::error!("Unimplemented Internet Action")

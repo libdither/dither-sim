@@ -2,9 +2,10 @@
 
 use std::collections::HashMap;
 
-use iced::{Canvas, Color, Element, Length, Point, Rectangle, Vector, canvas::{self, Cache, Cursor, Event, Frame, Geometry, Path, Text, event}, keyboard, mouse};
+use iced::{Canvas, Color, Element, Length, Point, Rectangle, Vector, canvas::{self, Cache, Cursor, Event, Frame, Geometry, Path, Stroke, Text, event}, keyboard, mouse};
 use nalgebra::Vector2;
 use petgraph::{EdgeType, Graph, graph::{EdgeIndex, NodeIndex}};
+use either::Either;
 
 pub use petgraph::{Directed, Undirected};
 use sim::FieldPosition;
@@ -20,7 +21,7 @@ enum Interaction {
 	Panning { // Panning canvas
 		start: Point,
 	},
-	Connecting { from: usize, candidate: Option<usize> }, // Connecting from node to node
+	Connecting { from: usize, candidate: Either<Point, usize> }, // Connecting from node to node
 }
 pub trait NetworkNode {
 	/// Id that can be used to find the node in some other location
@@ -43,6 +44,8 @@ pub struct NetworkMap<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> {
 	nodes: Graph<N, E, Ty>, // Node graph data structure
 	unique_id_map: HashMap<usize, NodeIndex>, // Maps unique node ids to indicies into local node storage
 	node_cache: Cache, // Stores geometry of last drawn update
+	overlay_cache: Cache,
+	translation_cache: Cache,
 	scale: f32, // Current graph scaling, Important: this should not be zero
 	translation: Vector, // Current Graph translation
 	interaction: Interaction, // Current interaction state
@@ -69,7 +72,7 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 
 	pub fn global_cursor_position(&self) -> &Point { &self.global_cursor_position }
 	pub fn set_connecting(&mut self) {
-		if let Some(selected) = self.selected_node { self.trigger_update(); self.interaction = Interaction::Connecting { from: selected, candidate: None }; }
+		if let Some(selected) = self.selected_node { self.trigger_update(); self.interaction = Interaction::Connecting { from: selected, candidate: Either::Left(self.global_cursor_position) }; }
 	}
 	pub fn detect_hovering(&self) -> Option<usize> {
 		// Detect hovering over nodes
@@ -101,6 +104,7 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 		Some(())
 	}
 	pub fn trigger_update(&mut self) {
+		self.overlay_cache.clear();
 		self.node_cache.clear();
 	}
 
@@ -109,6 +113,8 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 			nodes: Graph::default(),
 			unique_id_map: HashMap::default(),
 			node_cache: Default::default(),
+			translation_cache: Default::default(),
+			overlay_cache: Default::default(),
 			scale: 1.0,
 			translation: Default::default(),
 			interaction: Default::default(),
@@ -166,10 +172,9 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 										(Some(Interaction::Hovering(node)), None)
 									}
 									Interaction::PressingCanvas(_) => {
-										self.selected_node = None;
 										(Some(Interaction::None), None)
 									}
-									Interaction::Connecting { from, candidate: Some(to) } => {
+									Interaction::Connecting { from, candidate: Either::Right(to) } => {
 										(Some(Interaction::None), Some(Message::TriggerConnection(from, to)))
 									}
 									_ => (Some(Interaction::None), None)
@@ -188,12 +193,11 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 								}), None)
 							}
 							Interaction::Connecting { from, candidate } => {
-								self.trigger_update();
 								(match self.detect_hovering() {
 									Some(hovering) if hovering != from => {
-										Some(Interaction::Connecting { from, candidate: Some(hovering) })
+										Some(Interaction::Connecting { from, candidate: Either::Right(hovering) })
 									},
-									_ => None
+									_ => Some(Interaction::Connecting { from, candidate: Either::Left(self.global_cursor_position) } )
 								}, None)
 							}
 							_ => {
@@ -220,7 +224,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 										cursor_position.x * factor / (old_scaling * old_scaling),
 										cursor_position.y * factor / (old_scaling * old_scaling),
 									);
-
+							
 							self.trigger_update(); // Need update here because interaction type does not change
 
 							(None, None)
@@ -233,17 +237,25 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 		match ret {
 			(None, None) => (event::Status::Ignored, Some(Message::CanvasEvent(event))),
 			(Some(interaction), msg) if interaction != self.interaction => {
+				use Interaction::*;
+				match (&self.interaction, &interaction) {
+					(Hovering(_), _) | (_, Hovering(_)) => self.node_cache.clear(),
+					(Connecting { .. }, _) | (_, Connecting { .. }) => self.node_cache.clear(),
+					(Panning { .. }, _) | (_, Panning { .. }) => self.node_cache.clear(),
+					(PressingNode(_, _), _) => self.node_cache.clear(), // Unpress Node
+					(PressingCanvas(_), _) if self.selected_node.is_some() => { self.node_cache.clear(); self.selected_node = Option::None; },
+					_ => {},
+				}
 				self.interaction = interaction;
-				self.trigger_update();
+				self.overlay_cache.clear();
 				(event::Status::Captured, msg)
 			}
 			(_, msg) => (event::Status::Ignored, msg),
 		}
 	}
 
-	fn draw(&self, bounds: Rectangle, cursor: Cursor) -> Vec<Geometry> {
+	fn draw(&self, bounds: Rectangle, _: Cursor) -> Vec<Geometry> {
 		let center = bounds.center(); let center = Vector::new(center.x, center.y);
-		let cursor_position = cursor.position();
 
 		let mut selected: Option<usize> = None; // selected node
 
@@ -251,33 +263,50 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 			let background = Path::rectangle(Point::ORIGIN, frame.size());
 			frame.fill(&background, Color::from_rgb8(240, 240, 240));
 
+			// Render nodes in a scaled frame
 			frame.with_save(|frame| {
-				//frame.translate(center);
 				frame.scale(self.scale);
 				frame.translate(self.translation);
-				//frame.scale(Cell::SIZE as f32);
 				for node in self.nodes.node_weights() {
-					let hover = if let Interaction::Hovering(hovering_node) | Interaction::PressingNode(_, hovering_node) = self.interaction { hovering_node == node.unique_id() } else { false };
+					let hover = if let Interaction::Hovering(hovering_node)
+					 | Interaction::PressingNode(_, hovering_node)
+					 | Interaction::Connecting { from: _, candidate: Either::Right(hovering_node) }
+					 = self.interaction { hovering_node == node.unique_id() } else { false };
 					node.render(frame, hover, self.selected_node == Some(node.unique_id()));
 				}
+			});
+		});
+
+		// TODO: figure out how to cache nodes and make it so that panning doesn't need redraw
+		let translated_nodes = nodes;
+		/* let translated_nodes = self.translation_cache.draw(bounds.size(), |frame| {
+			frame.add_primitive(iced_graphics::Primitive::Translate {
+				translation: self.translation,
+				content: Box::new(nodes.into_primitive())
+			});
+		}); */
+		let overlay = self.overlay_cache.draw(bounds.size(), |frame| {
+			// Drawing line for connecting interaction
+			frame.with_save(|frame| {
+				frame.translate(self.translation);
 				if let Interaction::Connecting { from, candidate } = self.interaction {
-					let from = self.node(from).map(|n|n.position());
-					let to_node = candidate.map(|id|self.node(id)).flatten().map(|n|Point::ORIGIN + n.position());
-					if let (Some(from), Some(to_cursor)) = (from, cursor_position) {
-						let to = to_node.unwrap_or(to_cursor);
-						frame.fill(&Path::line(Point::ORIGIN + from, to), Color::BLACK);
+					let from = self.node(from).map(|n|Point::ORIGIN + n.position());
+					if let (Some(point_from), Some(point_to)) = (from, match candidate {
+						Either::Left(point) => Some(point),
+						Either::Right(id) => self.node(id).map(|n|Point::ORIGIN + n.position())
+					}) {
+						frame.stroke(&Path::line(point_from, point_to), Stroke { width: 2.0, ..Default::default() });
 					}
 				}
 			});
-
+			
 			frame.fill_text(Text { content:
 				format!("T: ({}, {}), S: {}, FP: ({}, {}), Int: {:?}",
 				self.translation.x, self.translation.y, self.scale, self.global_cursor_position.x, self.global_cursor_position.y, self.interaction),
 				position: Point::new(0.0, 0.0), size: 20.0, ..Default::default()
 			});
-
 		});
-		vec![nodes]
+		vec![translated_nodes, overlay]
 	}
 
 	/* fn mouse_interaction(&self, bounds: Rectangle, cursor: Cursor) -> mouse::Interaction {

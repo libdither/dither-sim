@@ -15,11 +15,11 @@ use anyhow::{Context, anyhow};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
 	let (event_sender, mut event_receiver) = mpsc::channel(20);
-	macro_rules! resp_debug{
+	/* macro_rules! resp_debug{
 		($($arg:tt)*) => {{
 			let _ = event_sender.send(DeviceEvent::Debug(format!($($arg)*))).await;
 		}}
-	}
+	} */
 
 	// Stdout parsing thread
 	let parse_events = tokio::spawn(async move {
@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
 							DeviceCommand::DitherCommand(dither_command) => {
 								dither_command_sender.try_send(dither_command)?;
 							},
-							command => Err(anyhow!("Unimplemented DeviceCommand: {:?}", command))?,
+							// command => Err(anyhow!("Unimplemented DeviceCommand: {:?}", command))?,
 						}
 					};
 					if let Err(err) = result { event_sender.try_send(DeviceEvent::Error(format!("{:?}", err))).unwrap(); }
