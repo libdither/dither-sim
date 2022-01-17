@@ -1,0 +1,3 @@
+[submodule "vendor/netsim-embed"]
+	path = vendor/netsim-embed
+	url = https://github.com/libdither/netsim-embed
