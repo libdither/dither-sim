@@ -10,3 +10,8 @@ members = [
 
 [patch.crates-io]
 netsim-embed = { path = "vendor/netsim-embed" }
+iced = { path = "vendor/iced" }
+iced_futures = { path = "vendor/iced/futures" }
+iced_core = { path = "vendor/iced/core" }
+iced_graphics = { path = "vendor/iced/graphics" }
+iced_native = { path = "vendor/iced/native" }
