@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use super::{Icon, Tab};
-use iced::{Align, Button, Color, Column, Container, Element, Length, Row, Text, Vector, button, canvas::{self, event}, keyboard};
+use iced::{Align, Button, Color, Column, Container, Element, Length, Point, Row, Text, Vector, button, canvas::{self, Path, event}, keyboard};
 use iced_aw::TabLabel;
 use petgraph::Undirected;
 use sim::{FieldPosition, NodeType};
@@ -24,21 +24,34 @@ impl NetworkNode for NetworkTabNode {
 	fn unique_id(&self) -> usize {
 		self.id
 	}
-	fn color(&self) -> Color {
-		match self.node_type {
-			NodeType::Machine => Color::BLACK,
-			NodeType::Network => Color::from_rgb(0.5, 0.5, 0.5),
-		}
-	}
-	fn size(&self) -> u32 {
-		30
-	}
 	fn position(&self) -> Vector {
 		Vector::new(self.field_position.x as f32, self.field_position.y as f32)
 	}
-	fn text(&self) -> Option<iced::canvas::Text> {
-		None
-		//Text { content: "" }
+	fn render(&self, frame: &mut canvas::Frame, hover: bool, selected: bool) {
+		let point = {
+			Point::new(self.field_position.x as f32, self.field_position.y as f32)
+		};
+		let radius = 30.0;
+		
+		if selected {
+			frame.fill(&Path::circle(point.clone(), radius + 5.0), Color::from_rgb8(255, 255, 0));
+		}
+
+		let node_color = if hover { Color::from_rgb8(200, 200, 200) } else { Color::BLACK };
+		frame.fill(&Path::circle(point.clone(), radius), node_color);
+
+		frame.fill_text(canvas::Text { content:
+			format!("ID: {}",
+			self.id),
+			position: point, color: Color::from_rgb8(255, 0, 0), size: 20.0,
+			horizontal_alignment: iced::HorizontalAlignment::Center, vertical_alignment: iced::VerticalAlignment::Center,
+			..Default::default()
+		});
+	}
+	fn check_mouseover(&self, cursor_position: &Point) -> bool {
+		let size = 30.0;
+		let diff = *cursor_position - self.position();
+		(diff.x * diff.x + diff.y * diff.y) < size * size
 	}
 }
 #[derive(Clone, Debug)]
@@ -103,6 +116,9 @@ impl NetworkTab {
 			},
 			Message::NetMapMessage(netmap_msg) => {
 				match netmap_msg {
+					network_map::Message::TriggerConnection(from, to) => {
+						println!("triggered connectiong from {} to {}", from, to);
+					},
 					network_map::Message::CanvasEvent(canvas::Event::Keyboard(keyboard_event)) => {
 						match keyboard_event {
 							keyboard::Event::KeyReleased { key_code, modifiers } => {
@@ -111,9 +127,12 @@ impl NetworkTab {
 										match key_code {
 											keyboard::KeyCode::N => {
 												return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Network));
-											},
+											}
 											keyboard::KeyCode::M => {
 												return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Machine));
+											}
+											keyboard::KeyCode::C => {
+												self.map.set_connecting();
 											}
 											_ => {}
 										}
