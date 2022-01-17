@@ -1,3 +1,6 @@
 [submodule "vendor/netsim-embed"]
 	path = vendor/netsim-embed
 	url = https://github.com/libdither/netsim-embed
+[submodule "vendor/iced"]
+	path = vendor/iced
+	url = https://github.com/zyansheep/iced
