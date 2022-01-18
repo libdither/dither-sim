@@ -15,3 +15,32 @@ iced_futures = { path = "vendor/iced/futures" }
 iced_core = { path = "vendor/iced/core" }
 iced_graphics = { path = "vendor/iced/graphics" }
 iced_native = { path = "vendor/iced/native" }
+
+[workspace.metadata.nix]
+nativeBuildInputs = [
+	"cargo-edit",
+	"lldb",
+	"pkg-config",
+	"cmake",
+]
+buildInputs = [
+	"libxkbcommon",
+	"x11",
+	"xorg.libX11",
+	"xorg.libXcursor",
+	"xorg.libXrandr",
+	"xorg.libXi",
+	"vulkan-tools",
+	"vulkan-headers",
+	"vulkan-loader",
+	"vulkan-validation-layers",
+	"fontconfig",
+	"freetype",
+	"protobuf",
+]
+runtimeLibs = [
+	"x11",
+	"xorg.libX11"
+]
+toolchain = "nightly"
+devshell = {name = "dither-sim-shell" }
