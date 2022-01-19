@@ -5,6 +5,7 @@
 
 use std::fmt::{Debug};
 use std::ops::Range;
+use std::time::Duration;
 
 use petgraph::{graph::NodeIndex, Graph};
 use netsim_embed::Ipv4Range;
@@ -17,10 +18,10 @@ mod netsim_ext;
 mod internet_node;
 use netsim_ext::*;
 
-pub use self::internet_node::{FieldPosition, InternetNetwork, InternetMachine, InternetNode, NodeType, NodeInfo, MachineInfo, NetworkInfo, Latency};
+pub use self::internet_node::{FieldPosition, InternetNetwork, InternetMachine, InternetNode, NodeType, NodeInfo, MachineInfo, NetworkInfo, Latency, NodeVariant};
 
 /// All Dither Nodes and Routing Nodes will be organized on a field
-/// Internet Simulation Field Dimensions (Measured in Nanolightseconds): 64ms x 26ms
+/// Internet Simulation Field Dimensions (Measured in Microlightseconds): 64ms x 26ms
 pub const FIELD_DIMENSIONS: (Range<i32>, Range<i32>) = (-320000..320000, -130000..130000);
 
 /// Cache file to save network configuration
@@ -47,6 +48,8 @@ pub enum InternetAction {
 
 	/// Change position of a given node in the network
 	SetPosition(usize, FieldPosition),
+	/// Connect two nodes
+	ConnectNodes(usize, usize),
 
 	/// Send Device command (Dither-specific or otherwise) -> NodeInfo & MachineInfo
 	DeviceCommand(usize, DeviceCommand),
@@ -68,6 +71,8 @@ pub enum InternetEvent {
 	MachineInfo(usize, MachineInfo),
 	/// General network info
 	NetworkInfo(usize, NetworkInfo),
+	/// Connection Info
+	NewConnection(usize, usize),
 
 	/// Error
 	Error(String),
@@ -86,6 +91,8 @@ pub enum InternetError {
 	InvalidNodeType { index: usize, expected: NodeType },
 	#[error("Unknown Node index: {index}")]
 	UnknownNode { index: usize },
+	#[error("Can't connect machines directory to each other")]
+	MachineConnectionError,
 
 	#[error("Spawned Too many networks, not enough addresses (see MAX_NETWORKS)")]
 	TooManyNetworks,
@@ -129,11 +136,17 @@ impl Internet {
 	fn node(&self, index: usize) -> Result<&InternetNode, InternetError> {
 		self.network.node_weight(NodeIndex::new(index)).ok_or(InternetError::UnknownNode { index })
 	}
+	fn node_mut(&mut self, index: usize) -> Result<&mut InternetNode, InternetError> {
+		self.network.node_weight_mut(NodeIndex::new(index)).ok_or(InternetError::UnknownNode { index })
+	} 
 	pub fn machine(&self, index: usize) -> Result<&InternetMachine, InternetError> {
 		self.node(index)?.machine().ok_or(InternetError::InvalidNodeType { index, expected: NodeType::Machine })
 	}
 	pub fn network(&self, index: usize) -> Result<&InternetNetwork, InternetError> {
 		self.node(index)?.network().ok_or(InternetError::InvalidNodeType { index, expected: NodeType::Network })
+	}
+	pub fn network_mut(&mut self, index: usize) -> Result<&mut InternetNetwork, InternetError> {
+		self.node_mut(index)?.network_mut().ok_or(InternetError::InvalidNodeType { index, expected: NodeType::Network })
 	}
 	/// Run network function
 	/// IMPORTANT: This function must be called from an unshare() context (i.e. a kernel virtual network)
@@ -158,6 +171,28 @@ impl Internet {
 						self.action(InternetAction::GetNodeInfo(idx.index())).await?;
 						self.action(InternetAction::GetMachineInfo(idx.index())).await?;
 						log::debug!("Added Machine Node: {:?}", idx);
+					}
+					InternetAction::ConnectNodes(from, to) => {
+						use NodeVariant::*;
+						let node1 = self.node(from)?;
+						let node2 = self.node(to)?;
+						match (&node1.variant, &node2.variant) {
+							(Network(net1), Network(net2)) => {
+								let delay = Duration::from_micros(node1.latency_distance(node2));
+								let (plug1, plug2, wire_handle) = Wire::new(delay);
+								let (route1, route2) = (net1.route(), net2.route());
+								let (unique_id_1, unique_id_2) = (net1.unique_id(), net2.unique_id());
+								self.network_mut(from)?.connect(unique_id_2, plug1, vec![route1], wire_handle.clone());
+								self.network_mut(to)?.connect(unique_id_1, plug2, vec![route2], wire_handle.clone());
+							}
+							(Network(net), Machine(machine)) | (Machine(machine), Network(net)) => {
+								
+							}
+							_ => Err(InternetError::MachineConnectionError)?,
+						}
+					}
+					InternetAction::SetPosition(node, position) => {
+						//self.machine(node)?.update_position(position).await?;
 					}
 					InternetAction::GetNodeInfo(index) => {
 						self.send_event(InternetEvent::NodeInfo(index, self.node(index)?.node_info())).await?;
@@ -205,7 +240,7 @@ impl Internet {
 
 		let machine = InternetMachine::new(machine_id, self.action_sender.clone(), &self.device_exec).await;
 
-		let node = InternetNode::from_machine(machine, position);
+		let node = InternetNode::from_machine(machine, position, machine_id);
 		self.network.add_node(node)
 	}
 	/// Spawn network at position
@@ -214,7 +249,7 @@ impl Internet {
 		let range = self.ip_range_iter.next().ok_or(InternetError::TooManyNetworks)?;
 
 		let network = InternetNetwork::new(id, range);
-		let node = InternetNode::from_network(network, position);
+		let node = InternetNode::from_network(network, position, id);
 		Ok(self.network.add_node(node))
 	}
 	/* /// Connect Machine to Network, or Network to Network.

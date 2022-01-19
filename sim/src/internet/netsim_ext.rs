@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use std::mem;
 
 use async_std::{self, task::{self, JoinHandle}};
@@ -24,6 +24,11 @@ pub struct Wire {
 }
 
 impl Wire {
+	pub fn new(delay: Duration) -> (Plug, Plug, Arc<WireHandle>) {
+		let (plug_in_ret, plug_in_wire) = netsim_embed::wire();
+		let (plug_out_wire, plug_out_ret) = netsim_embed::wire();
+		(plug_in_ret, plug_out_ret, Arc::new(Wire { delay }.connect(plug_in_wire, plug_out_wire)))
+	}
 	pub fn connect(mut self, plug_a: Plug, plug_b: Plug) -> WireHandle {
 		let (action_sender, mut action_receiver) = mpsc::channel(5);
 		let (mut return_sender, return_receiver) = mpsc::channel(1);

@@ -36,6 +36,7 @@ pub enum Message {
 	/// From tabs & loaded gui
 	RemoveNode(usize),
 	MoveNode(usize, FieldPosition),
+	ConnectNode(usize, usize),
 	MousePosition(Vector),
 	AddNode(FieldPosition, NodeType)
 }
@@ -82,6 +83,9 @@ impl State {
 					InternetEvent::NetworkInfo(id, info) => {
 						self.process_network_tab_msg(network_tab::Message::UpdateNetwork(id, info))
 					},
+					InternetEvent::NewConnection(from, to) => {
+						self.process_network_tab_msg(network_tab::Message::AddConnection(from, to))
+					}
 					InternetEvent::Error(_) => todo!(),
 					//_ => { println!("Received Internet Event: {:?}", internet_event) }
 				}
@@ -107,6 +111,9 @@ impl State {
 				self.net_action(InternetAction::SetPosition(index, new_position));
 				None
 			},
+			Message::ConnectNode(from, to) => {
+				self.net_action(InternetAction::ConnectNodes(from, to)); None
+			}
 			Message::AddNode(position, node_type) => {
 				match node_type {
 					NodeType::Machine => self.net_action(InternetAction::AddMachine(position)),

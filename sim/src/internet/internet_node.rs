@@ -1,4 +1,4 @@
-use std::{net::Ipv4Addr, time::Duration};
+use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 
 use async_std::task::{self, JoinHandle};
 use device::{Address, DeviceCommand, DeviceEvent, DitherCommand, DitherEvent};
@@ -20,7 +20,7 @@ pub const DEFAULT_INTERNAL_LATENCY: Latency = 20;
 
 pub enum InternetMachineConnection {
 	Unconnected(Plug),
-	Connected(Ipv4Addr),
+	Connected(usize, Ipv4Addr),
 }
 pub struct InternetMachine {
 	pub machine: Machine<DeviceCommand, DeviceEvent>,
@@ -65,6 +65,11 @@ impl InternetMachine {
 	pub fn request_machine_info(&self) -> Result<(), InternetError> {
 		self.machine.tx.unbounded_send(DeviceCommand::DitherCommand(DitherCommand::GetNodeInfo)).map_err(|_|InternetError::DeviceCommandSenderClosed)
 	}
+	/* pub async fn update_position(&mut self) -> Result<(), InternetError> {
+		match self.connection_status {
+			InternetMachineConnection::
+		}
+	} */
 }
 
 #[derive(Debug, Clone)]
@@ -85,19 +90,26 @@ pub struct MachineInfo {
 
 pub struct InternetNetwork {
 	network: Network,
-	connections: Vec<(usize, bool)>,
+	connections: Vec<(usize, bool, Arc<WireHandle>)>,
 }
 impl InternetNetwork {
 	pub fn new(id: usize, range: Ipv4Range) -> Self {
 		Self { network: Network::new(NetworkId(id), range), connections: Default::default() }
 	}
+	pub fn unique_id(&self) -> usize { self.network.id().0 }
 	pub fn local_addr(&self) -> Ipv4Addr { self.network.range().base_addr() }
-	pub fn connect(&self, id: usize, plug: Plug, routes: Vec<Ipv4Route>) {
+
+	pub fn route(&self) -> Ipv4Route { self.network.range().into() }
+	pub fn unique_addr(&mut self) -> Ipv4Addr {
+		self.network.unique_addr()
+	}
+	pub fn connect(&mut self, id: usize, plug: Plug, routes: Vec<Ipv4Route>, wire_handle: Arc<WireHandle>) {
+		self.connections.push((id, true, wire_handle));
 		self.network.router.add_connection(id, plug, routes);
 	}
 	pub fn network_info(&self) -> NetworkInfo {
 		NetworkInfo {
-			connections: self.connections.clone(),
+			connections: self.connections.iter().map(|(id, active, _)|(*id, *active)).collect(),
 			ip_range: self.network.range().clone()
 		}
 	}
@@ -115,29 +127,31 @@ pub enum NodeType {
 	Machine,
 }
 
-enum NodeVariant {
+pub enum NodeVariant {
 	Network(InternetNetwork),
 	Machine(InternetMachine),
 }
 
 /// Internet node type, has direct peer-to-peer connections and maintains a routing table to pick which direction a packet goes down.
 pub struct InternetNode {
-	variant: NodeVariant,
+	pub variant: NodeVariant,
 	/// Position of this Node in the Internet Simulation Field
 	position: FieldPosition,
+	/// Index of Node in Internet.map
+	id: usize,
 }
 
 impl InternetNode {
-	pub fn from_machine(machine: InternetMachine, position: FieldPosition) -> Self {
+	pub fn from_machine(machine: InternetMachine, position: FieldPosition, id: usize) -> Self {
 		Self {
 			variant: NodeVariant::Machine(machine),
-			position,
+			position, id,
 		}
 	}
-	pub fn from_network(network: InternetNetwork, position: FieldPosition) -> Self {
+	pub fn from_network(network: InternetNetwork, position: FieldPosition, id: usize) -> Self {
 		Self {
 			variant: NodeVariant::Network(network),
-			position,
+			position, id,
 		}
 	}
 	pub fn node_info(&self) -> NodeInfo {
@@ -147,7 +161,7 @@ impl InternetNode {
 			},
 			NodeVariant::Machine(machine) => {
 				(machine.latency(), match machine.connection_status {
-					InternetMachineConnection::Connected(addr) => Some(addr),
+					InternetMachineConnection::Connected(_net_id, addr) => Some(addr),
 					InternetMachineConnection::Unconnected(_) => None,
 				}, NodeType::Machine)
 			},
@@ -159,11 +173,17 @@ impl InternetNode {
 			node_type,
 		}
 	}
+	pub fn latency_distance(&self, other: &Self) -> Latency {
+		self.position.map(|v|v as f64).metric_distance(&other.position.map(|v|v as f64)) as Latency
+	}
 	pub fn machine(&self) -> Option<&InternetMachine> {
 		match &self.variant { NodeVariant::Machine(m) => Some(m), _ => None }
 	}
 	pub fn network(&self) -> Option<&InternetNetwork> {
 		match &self.variant { NodeVariant::Network(n) => Some(n), _ => None }
+	}
+	pub fn network_mut(&mut self) -> Option<&mut InternetNetwork> {
+		match &mut self.variant { NodeVariant::Network(n) => Some(n), _ => None }
 	}
 }
 

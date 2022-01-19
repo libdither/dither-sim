@@ -93,6 +93,9 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 		self.unique_id_map.insert(unique_id, node_index);
 		self.trigger_update();
 	}
+	pub fn add_edge(&mut self, from: usize, to: usize, weight: E) {
+		self.nodes.add_edge(NodeIndex::new(from), NodeIndex::new(to), weight);
+	}
 	/// Make sure to call NetworkMap::update()
 	pub fn node_mut(&mut self, id: usize) -> Option<&mut N> { self.nodes.node_weight_mut(*self.unique_id_map.get(&id)?) }
 	pub fn node(&self, id: usize) -> Option<&N> { self.nodes.node_weight(*self.unique_id_map.get(&id)?) }

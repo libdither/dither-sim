@@ -78,6 +78,7 @@ pub enum Message {
 	UpdateNode(usize, sim::NodeInfo),
 	UpdateMachine(usize, sim::MachineInfo),
 	UpdateNetwork(usize, sim::NetworkInfo),
+	AddConnection(usize, usize),
 	RemoveNode(usize), // Removes edges too.
 
 	NetMapMessage(network_map::Message),
@@ -114,10 +115,13 @@ impl NetworkTab {
 			Message::RemoveNode(idx) => {
 				self.map.remove_node(idx);
 			},
+			Message::AddConnection(from, to) => {
+				self.map.add_edge(from, to, NetworkTabEdge { source: from, dest: to, latency: 5 });
+			},
 			Message::NetMapMessage(netmap_msg) => {
 				match netmap_msg {
 					network_map::Message::TriggerConnection(from, to) => {
-						println!("triggered connectiong from {} to {}", from, to);
+						return Some(loaded::Message::ConnectNode(from, to));
 					},
 					network_map::Message::CanvasEvent(canvas::Event::Keyboard(keyboard_event)) => {
 						match keyboard_event {
