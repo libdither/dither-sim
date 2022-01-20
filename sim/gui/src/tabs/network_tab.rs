@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use super::{Icon, Tab};
-use iced::{Align, Button, Color, Column, Container, Element, Length, Point, Row, Text, Vector, button, canvas::{self, Path, event}, keyboard};
+use iced::{Align, Button, Color, Column, Container, Element, Length, Point, Row, Text, Vector, button, canvas::{self, Path, Stroke, event}, keyboard};
 use iced_aw::TabLabel;
 use petgraph::Undirected;
 use sim::{FieldPosition, NodeType};
@@ -61,14 +61,15 @@ pub struct NetworkTabEdge {
 	pub latency: usize,
 }
 impl NetworkEdge for NetworkTabEdge {
-	fn color(&self) -> Color {
-		Color::BLACK
-	}
-	fn width(&self) -> u8 {
-		5
-	}
-	fn unique_connection(&self) -> (usize, usize) {
+	fn source(&self) -> usize { self.source }
+	fn dest(&self) -> usize { self.dest }
+	/* fn unique_connection(&self) -> (usize, usize) {
 		(self.source, self.dest)
+	} */
+	fn render(&self, frame: &mut canvas::Frame, source: & impl NetworkNode, dest: & impl NetworkNode) {
+		let from = source.position();
+		let to = dest.position();
+		frame.stroke(&Path::line(Point::ORIGIN + from, Point::ORIGIN + to), Stroke { color: Color::from_rgb8(0, 0, 0), width: 3.0, ..Default::default() });
 	}
 }
 

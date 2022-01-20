@@ -35,9 +35,10 @@ pub trait NetworkNode {
 	fn check_mouseover(&self, cursor_position: &Point) -> bool;
 }
 pub trait NetworkEdge {
-	fn color(&self) -> Color;
-	fn width(&self) -> u8;
-	fn unique_connection(&self) -> (usize, usize); // Useful when adding edge to graph
+	fn source(&self) -> usize;
+	fn dest(&self) -> usize;
+	fn render(&self, frame: &mut canvas::Frame, source: & impl NetworkNode, dest: & impl NetworkNode);
+	//fn unique_connection(&self) -> (usize, usize); // Useful when adding edge to graph
 }
 
 pub struct NetworkMap<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> {
@@ -270,6 +271,12 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 			frame.with_save(|frame| {
 				frame.scale(self.scale);
 				frame.translate(self.translation);
+				for edge in self.nodes.raw_edges() {
+					let source = self.nodes.node_weight(edge.source()).expect("malformed graph");
+					let dest = self.nodes.node_weight(edge.target()).expect("malformed graph");
+					edge.weight.render(frame, source, dest);
+				}
+
 				for node in self.nodes.node_weights() {
 					let hover = if let Interaction::Hovering(hovering_node)
 					 | Interaction::PressingNode(_, hovering_node)

@@ -184,6 +184,11 @@ impl Internet {
 								let (unique_id_1, unique_id_2) = (net1.unique_id(), net2.unique_id());
 								self.network_mut(from)?.connect(unique_id_2, plug1, vec![route1], wire_handle.clone());
 								self.network_mut(to)?.connect(unique_id_1, plug2, vec![route2], wire_handle.clone());
+								self.send_event(InternetEvent::NewConnection(from, to)).await?;
+								self.action(InternetAction::GetNodeInfo(from)).await?;
+								self.action(InternetAction::GetNodeInfo(to)).await?;
+								self.action(InternetAction::GetNetworkInfo(from)).await?;
+								self.action(InternetAction::GetNetworkInfo(to)).await?;
 							}
 							(Network(net), Machine(machine)) | (Machine(machine), Network(net)) => {
 								
