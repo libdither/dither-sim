@@ -7,7 +7,6 @@
 #![feature(try_blocks)]
 #![feature(arbitrary_self_types)]
 #![feature(unzip_option)]
-#![feature(destructuring_assignment)]
 
 #[macro_use]
 extern crate thiserror;

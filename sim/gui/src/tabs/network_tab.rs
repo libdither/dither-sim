@@ -79,7 +79,7 @@ pub enum Message {
 	UpdateNode(usize, sim::NodeInfo),
 	UpdateMachine(usize, sim::MachineInfo),
 	UpdateNetwork(usize, sim::NetworkInfo),
-	AddConnection(usize, usize),
+	UpdateConnection(usize, usize, bool),
 	RemoveNode(usize), // Removes edges too.
 
 	NetMapMessage(network_map::Message),
@@ -116,8 +116,13 @@ impl NetworkTab {
 			Message::RemoveNode(idx) => {
 				self.map.remove_node(idx);
 			},
-			Message::AddConnection(from, to) => {
-				self.map.add_edge(from, to, NetworkTabEdge { source: from, dest: to, latency: 5 });
+			Message::UpdateConnection(from, to, activated) => {
+				if activated {
+					self.map.add_edge(from, to, NetworkTabEdge { source: from, dest: to, latency: 5 });
+				} else {
+					self.map.remove_edge(from, to);
+				}
+				
 			},
 			Message::NetMapMessage(netmap_msg) => {
 				match netmap_msg {

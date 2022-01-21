@@ -18,6 +18,8 @@ mod netsim_ext;
 mod internet_node;
 use netsim_ext::*;
 
+use crate::internet::internet_node::InternetMachineConnection;
+
 pub use self::internet_node::{FieldPosition, InternetNetwork, InternetMachine, InternetNode, NodeType, NodeInfo, MachineInfo, NetworkInfo, Latency, NodeVariant};
 
 /// All Dither Nodes and Routing Nodes will be organized on a field
@@ -72,7 +74,7 @@ pub enum InternetEvent {
 	/// General network info
 	NetworkInfo(usize, NetworkInfo),
 	/// Connection Info
-	NewConnection(usize, usize),
+	ConnectionInfo(usize, usize, bool), // Whether or not to activate / deactivate a connection between two nodes
 
 	/// Error
 	Error(String),
@@ -142,6 +144,9 @@ impl Internet {
 	pub fn machine(&self, index: usize) -> Result<&InternetMachine, InternetError> {
 		self.node(index)?.machine().ok_or(InternetError::InvalidNodeType { index, expected: NodeType::Machine })
 	}
+	pub fn machine_mut(&mut self, index: usize) -> Result<&mut InternetMachine, InternetError> {
+		self.node_mut(index)?.machine_mut().ok_or(InternetError::InvalidNodeType { index, expected: NodeType::Machine })
+	}
 	pub fn network(&self, index: usize) -> Result<&InternetNetwork, InternetError> {
 		self.node(index)?.network().ok_or(InternetError::InvalidNodeType { index, expected: NodeType::Network })
 	}
@@ -184,14 +189,20 @@ impl Internet {
 								let (unique_id_1, unique_id_2) = (net1.unique_id(), net2.unique_id());
 								self.network_mut(from)?.connect(unique_id_2, plug1, vec![route1], wire_handle.clone());
 								self.network_mut(to)?.connect(unique_id_1, plug2, vec![route2], wire_handle.clone());
-								self.send_event(InternetEvent::NewConnection(from, to)).await?;
+								self.send_event(InternetEvent::ConnectionInfo(from, to, true)).await?;
 								self.action(InternetAction::GetNodeInfo(from)).await?;
 								self.action(InternetAction::GetNodeInfo(to)).await?;
 								self.action(InternetAction::GetNetworkInfo(from)).await?;
 								self.action(InternetAction::GetNetworkInfo(to)).await?;
-							}
+							},
 							(Network(net), Machine(machine)) | (Machine(machine), Network(net)) => {
-								
+								let machine_id = machine.id; let net_id = net.unique_id();
+								self.plug(machine_id, net_id).await?;
+								self.send_event(InternetEvent::ConnectionInfo(net_id, machine_id, true)).await?;
+								self.action(InternetAction::GetNodeInfo(net_id)).await?;
+								self.action(InternetAction::GetNetworkInfo(net_id)).await?;
+								self.action(InternetAction::GetNodeInfo(machine_id)).await?;
+								self.action(InternetAction::GetMachineInfo(machine_id)).await?;
 							}
 							_ => Err(InternetError::MachineConnectionError)?,
 						}
@@ -256,6 +267,28 @@ impl Internet {
 		let network = InternetNetwork::new(id, range);
 		let node = InternetNode::from_network(network, position, id);
 		Ok(self.network.add_node(node))
+	}
+	async fn plug(&mut self, machine_id: usize, network_id: usize) -> Result<(), InternetError> {
+		// Disconnect if connected
+		self.unplug(machine_id).await?;
+		let addr = self.network_mut(network_id)?.unique_addr();
+		let machine = self.machine_mut(machine_id)?;
+		let wire_handle = machine.outgoing_wire_handle.clone();
+
+		// Connect
+		let prev_status = std::mem::replace(&mut machine.connection_status, InternetMachineConnection::Connected(network_id, addr));
+		if let InternetMachineConnection::Unconnected(plug) = prev_status {
+			self.network_mut(network_id)?.connect(machine_id, plug, vec![addr.into()], wire_handle);
+		}
+		Ok(())
+	}
+	async fn unplug(&mut self, machine_id: usize) -> Result<(), InternetError> {
+		if let InternetMachineConnection::Connected(net_id, _) = self.machine(machine_id)?.connection_status {
+			let plug = self.network_mut(net_id)?.disconnect(machine_id).await;
+			self.machine_mut(machine_id)?.connection_status = InternetMachineConnection::Unconnected(plug);
+			self.send_event(InternetEvent::ConnectionInfo(net_id, machine_id, false)).await?;
+		}
+		Ok(())
 	}
 	/* /// Connect Machine to Network, or Network to Network.
 	/// Returns error if: Already connected or both nodes are Machines

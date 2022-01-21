@@ -1,4 +1,4 @@
-use std::{net::Ipv4Addr, sync::Arc, time::Duration};
+use std::{collections::HashMap, net::Ipv4Addr, sync::Arc, time::Duration};
 
 use async_std::task::{self, JoinHandle};
 use device::{Address, DeviceCommand, DeviceEvent, DitherCommand, DitherEvent};
@@ -27,8 +27,9 @@ pub struct InternetMachine {
 	pub event_join_handle: JoinHandle<()>,
 	pub connection_status: InternetMachineConnection,
 	/// Wire for internal latency simulation
-	pub internal_wire: WireHandle, 
+	pub internal_wire_handle: WireHandle, 
 	pub internal_latency: Latency,
+	pub outgoing_wire_handle: Arc<WireHandle>,
 	pub id: usize,
 }
 impl InternetMachine {
@@ -43,21 +44,22 @@ impl InternetMachine {
 			}
 		});
 
-		let (outgoing_plug, plug_from_wire) = netsim_embed::wire();
-		let wire = Wire { delay: Duration::from_millis(DEFAULT_INTERNAL_LATENCY) };
+		let (outgoing_plug, plug_from_wire, outgoing_wire_handle) = Wire::new(Duration::ZERO);
+		let internal_wire = Wire { delay: Duration::from_millis(DEFAULT_INTERNAL_LATENCY) };
 		let internet_machine = InternetMachine {
 			id: machine_id,
 			machine,
 			event_join_handle,
 			connection_status: InternetMachineConnection::Unconnected(outgoing_plug),
-			internal_wire: wire.connect(plug_to_wire, plug_from_wire),
+			outgoing_wire_handle,
+			internal_wire_handle: internal_wire.connect(plug_to_wire, plug_from_wire),
 			internal_latency: DEFAULT_INTERNAL_LATENCY,
 		};
 		internet_machine
 	}
 	pub async fn set_latency(&mut self, latency: Latency) {
 		self.internal_latency = latency;
-		self.internal_wire.set_delay(Duration::from_millis(self.internal_latency)).await;
+		self.internal_wire_handle.set_delay(Duration::from_millis(self.internal_latency)).await;
 	}
 	pub fn latency(&self) -> Latency {
 		self.internal_latency
@@ -90,7 +92,7 @@ pub struct MachineInfo {
 
 pub struct InternetNetwork {
 	network: Network,
-	connections: Vec<(usize, bool, Arc<WireHandle>)>,
+	connections: HashMap<usize, (bool, Arc<WireHandle>)>,
 }
 impl InternetNetwork {
 	pub fn new(id: usize, range: Ipv4Range) -> Self {
@@ -104,12 +106,16 @@ impl InternetNetwork {
 		self.network.unique_addr()
 	}
 	pub fn connect(&mut self, id: usize, plug: Plug, routes: Vec<Ipv4Route>, wire_handle: Arc<WireHandle>) {
-		self.connections.push((id, true, wire_handle));
+		self.connections.insert(id, (true, wire_handle));
 		self.network.router.add_connection(id, plug, routes);
+	}
+	pub async fn disconnect(&mut self, id: usize) -> Plug {
+		self.connections.remove(&id);
+		self.network.router.remove_connection(id).await.expect("There should be plug here")
 	}
 	pub fn network_info(&self) -> NetworkInfo {
 		NetworkInfo {
-			connections: self.connections.iter().map(|(id, active, _)|(*id, *active)).collect(),
+			connections: self.connections.iter().map(|(id, (active, _))|(*id, *active)).collect(),
 			ip_range: self.network.range().clone()
 		}
 	}
@@ -178,6 +184,9 @@ impl InternetNode {
 	}
 	pub fn machine(&self) -> Option<&InternetMachine> {
 		match &self.variant { NodeVariant::Machine(m) => Some(m), _ => None }
+	}
+	pub fn machine_mut(&mut self) -> Option<&mut InternetMachine> {
+		match &mut self.variant { NodeVariant::Machine(m) => Some(m), _ => None }
 	}
 	pub fn network(&self) -> Option<&InternetNetwork> {
 		match &self.variant { NodeVariant::Network(n) => Some(n), _ => None }

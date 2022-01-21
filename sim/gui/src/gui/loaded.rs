@@ -83,8 +83,8 @@ impl State {
 					InternetEvent::NetworkInfo(id, info) => {
 						self.process_network_tab_msg(network_tab::Message::UpdateNetwork(id, info))
 					},
-					InternetEvent::NewConnection(from, to) => {
-						self.process_network_tab_msg(network_tab::Message::AddConnection(from, to))
+					InternetEvent::ConnectionInfo(from, to, activation) => {
+						self.process_network_tab_msg(network_tab::Message::UpdateConnection(from, to, activation))
 					}
 					InternetEvent::Error(_) => todo!(),
 					//_ => { println!("Received Internet Event: {:?}", internet_event) }
