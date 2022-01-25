@@ -1,5 +1,5 @@
 use iced::{Align, Button, Checkbox, Column, Container, Element, Row, Text, Vector, button};
-use sim::{FieldPosition, InternetAction, InternetEvent, NodeType};
+use sim::{FieldPosition, InternetAction, InternetEvent, NodeIdx, NodeType};
 use futures::channel::mpsc;
 
 use crate::{subscription::InternetRecipe, tabs::{self, TabBar, network_tab}};
@@ -34,9 +34,9 @@ pub enum Message {
 	TriggerAddNetwork,
 
 	/// From tabs & loaded gui
-	RemoveNode(usize),
-	MoveNode(usize, FieldPosition),
-	ConnectNode(usize, usize),
+	RemoveNode(NodeIdx),
+	MoveNode(NodeIdx, FieldPosition),
+	ConnectNode(NodeIdx, NodeIdx),
 	MousePosition(Vector),
 	AddNode(FieldPosition, NodeType)
 }
@@ -83,10 +83,13 @@ impl State {
 					InternetEvent::NetworkInfo(id, info) => {
 						self.process_network_tab_msg(network_tab::Message::UpdateNetwork(id, info))
 					},
-					InternetEvent::ConnectionInfo(from, to, activation) => {
-						self.process_network_tab_msg(network_tab::Message::UpdateConnection(from, to, activation))
+					InternetEvent::ConnectionInfo(wire_idx, from, to) => {
+						self.process_network_tab_msg(network_tab::Message::UpdateConnection(wire_idx, from, to, true))
 					}
-					InternetEvent::Error(_) => todo!(),
+					InternetEvent::Error(err) => { match *err {
+						sim::InternetError::NodeConnectionError => { log::error!("Internet Error: Cannot connect two machines to each other"); },
+						_ => todo!(),
+					} None },
 					//_ => { println!("Received Internet Event: {:?}", internet_event) }
 				}
 			}

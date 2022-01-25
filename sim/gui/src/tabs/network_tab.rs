@@ -4,26 +4,25 @@ use super::{Icon, Tab};
 use iced::{Align, Button, Color, Column, Container, Element, Length, Point, Row, Text, Vector, button, canvas::{self, Path, Stroke, event}, keyboard};
 use iced_aw::TabLabel;
 use petgraph::Undirected;
-use sim::{FieldPosition, NodeType};
+use sim::{FieldPosition, NodeIdx, NodeType, WireIdx};
 
 use crate::{gui::loaded, network_map::{self, NetworkEdge, NetworkMap, NetworkNode}};
 
 #[derive(Clone, Debug)]
 pub struct NetworkTabNode {
-	id: usize,
+	id: NodeIdx,
 	node_type: NodeType,
 	field_position: FieldPosition,
 	ip_addr: Option<Ipv4Addr>,
 }
 impl NetworkTabNode {
-	fn new(id: usize, node_type: NodeType) -> NetworkTabNode {
+	fn new(id: NodeIdx, node_type: NodeType) -> NetworkTabNode {
 		Self { id, node_type, field_position: Default::default(), ip_addr: None }
 	}
 }
 impl NetworkNode for NetworkTabNode {
-	fn unique_id(&self) -> usize {
-		self.id
-	}
+	type NodeId = NodeIdx;
+	fn unique_id(&self) -> Self::NodeId { self.id }
 	fn position(&self) -> Vector {
 		Vector::new(self.field_position.x as f32, self.field_position.y as f32)
 	}
@@ -37,13 +36,14 @@ impl NetworkNode for NetworkTabNode {
 			frame.fill(&Path::circle(point.clone(), radius + 5.0), Color::from_rgb8(255, 255, 0));
 		}
 
-		let node_color = if hover { Color::from_rgb8(200, 200, 200) } else { Color::BLACK };
+		let node_color = match self.node_type { NodeType::Machine => Color::from_rgb8(0, 0, 255), NodeType::Network => Color::from_rgb8(255, 0, 0) };
+		if hover { let node_color = Color::from_rgb8(200, 200, 200); }
 		frame.fill(&Path::circle(point.clone(), radius), node_color);
 
 		frame.fill_text(canvas::Text { content:
 			format!("ID: {}",
 			self.id),
-			position: point, color: Color::from_rgb8(255, 0, 0), size: 20.0,
+			position: point, color: Color::BLACK, size: 20.0,
 			horizontal_alignment: iced::HorizontalAlignment::Center, vertical_alignment: iced::VerticalAlignment::Center,
 			..Default::default()
 		});
@@ -56,16 +56,16 @@ impl NetworkNode for NetworkTabNode {
 }
 #[derive(Clone, Debug)]
 pub struct NetworkTabEdge {
-	pub source: usize,
-	pub dest: usize,
+	pub id: WireIdx,
+	pub source: NodeIdx,
+	pub dest: NodeIdx,
 	pub latency: usize,
 }
-impl NetworkEdge for NetworkTabEdge {
-	fn source(&self) -> usize { self.source }
-	fn dest(&self) -> usize { self.dest }
-	/* fn unique_connection(&self) -> (usize, usize) {
-		(self.source, self.dest)
-	} */
+impl NetworkEdge<NetworkTabNode> for NetworkTabEdge {
+	type EdgeId = WireIdx;
+	fn unique_id(&self) -> Self::EdgeId { self.id }
+	fn source(&self) -> NodeIdx { self.source }
+	fn dest(&self) -> NodeIdx { self.dest }
 	fn render(&self, frame: &mut canvas::Frame, source: & impl NetworkNode, dest: & impl NetworkNode) {
 		let from = source.position();
 		let to = dest.position();
@@ -75,14 +75,14 @@ impl NetworkEdge for NetworkTabEdge {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-	AddNode(usize, sim::NodeType),
-	UpdateNode(usize, sim::NodeInfo),
-	UpdateMachine(usize, sim::MachineInfo),
-	UpdateNetwork(usize, sim::NetworkInfo),
-	UpdateConnection(usize, usize, bool),
-	RemoveNode(usize), // Removes edges too.
+	AddNode(NodeIdx, sim::NodeType),
+	UpdateNode(NodeIdx, sim::NodeInfo),
+	UpdateMachine(NodeIdx, sim::MachineInfo),
+	UpdateNetwork(NodeIdx, sim::NetworkInfo),
+	UpdateConnection(WireIdx, NodeIdx, NodeIdx, bool),
+	RemoveNode(NodeIdx), // Removes edges too.
 
-	NetMapMessage(network_map::Message),
+	NetMapMessage(network_map::Message<NetworkTabNode, NetworkTabEdge>),
 }
 
 pub struct NetworkTab {
@@ -116,9 +116,9 @@ impl NetworkTab {
 			Message::RemoveNode(idx) => {
 				self.map.remove_node(idx);
 			},
-			Message::UpdateConnection(from, to, activated) => {
-				if activated {
-					self.map.add_edge(from, to, NetworkTabEdge { source: from, dest: to, latency: 5 });
+			Message::UpdateConnection(conn_id, from, to, activation) => {
+				if activation {
+					self.map.add_edge(NetworkTabEdge { id: conn_id, source: from, dest: to, latency: 5 });
 				} else {
 					self.map.remove_edge(from, to);
 				}

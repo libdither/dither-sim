@@ -125,13 +125,13 @@ impl WireHandle {
 			Err(err) => self.did_error = Some(err), _ => {},
 		}
 	}
-	pub async fn swap_a_plug(&mut self, plug_a: Plug) -> Option<Plug> {
+	pub async fn swap_plug_a(&mut self, plug_a: Plug) -> Option<Plug> {
 		self.action(WireAction::SwapPlugA(plug_a)).await;
 		if let Some(WireReturn::SwappedPlugA(plug)) = self.return_receiver.next().await {
 			Some(plug)
 		} else { None }
 	}
-	pub async fn swap_b_plug(&mut self, plug_b: Plug) -> Option<Plug> {
+	pub async fn swap_plug_b(&mut self, plug_b: Plug) -> Option<Plug> {
 		self.action(WireAction::SwapPlugB(plug_b)).await;
 		if let Some(WireReturn::SwappedPlugB(plug)) = self.return_receiver.next().await {
 			Some(plug)

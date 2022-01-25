@@ -15,17 +15,18 @@ use sim::FieldPosition;
 enum Interaction {
 	#[derivative(Default)]
 	None, // Doing nothing else
-	Hovering(usize), // Hovering over node
-	PressingNode(Point, usize), // Holding down left mouse button over node
+	Hovering(NodeIndex), // Hovering over node
+	PressingNode(Point, NodeIndex), // Holding down left mouse button over node
 	PressingCanvas(Point), // Holding down left mouse button over canvas
 	Panning { // Panning canvas
 		start: Point,
 	},
-	Connecting { from: usize, candidate: Either<Point, usize> }, // Connecting from node to node
+	Connecting { from: NodeIndex, candidate: Either<Point, NodeIndex> }, // Connecting from node to node
 }
-pub trait NetworkNode {
+pub trait NetworkNode: Sized + 'static {
+	type NodeId: Sized + Clone + PartialOrd + PartialEq + Eq + std::hash::Hash;
 	/// Id that can be used to find the node in some other location
-	fn unique_id(&self) -> usize;
+	fn unique_id(&self) -> Self::NodeId;
 	/// Position on the map of the node
 	fn position(&self) -> Vector;
 	/// Draw Node
@@ -34,16 +35,18 @@ pub trait NetworkNode {
 	/// Check if this node is being mouse over
 	fn check_mouseover(&self, cursor_position: &Point) -> bool;
 }
-pub trait NetworkEdge {
-	fn source(&self) -> usize;
-	fn dest(&self) -> usize;
+pub trait NetworkEdge<N: NetworkNode>: Sized + 'static {
+	type EdgeId: Sized + Clone + PartialOrd + PartialEq;
+	fn unique_id(&self) -> Self::EdgeId;
+	fn source(&self) -> N::NodeId;
+	fn dest(&self) -> N::NodeId;
 	fn render(&self, frame: &mut canvas::Frame, source: & impl NetworkNode, dest: & impl NetworkNode);
 	//fn unique_connection(&self) -> (usize, usize); // Useful when adding edge to graph
 }
 
-pub struct NetworkMap<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> {
+pub struct NetworkMap<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> {
 	nodes: Graph<N, E, Ty>, // Node graph data structure
-	unique_id_map: HashMap<usize, NodeIndex>, // Maps unique node ids to indicies into local node storage
+	unique_id_map: HashMap<N::NodeId, NodeIndex>, // Maps unique node ids to indicies into local node storage
 	node_cache: Cache, // Stores geometry of last drawn update
 	overlay_cache: Cache,
 	translation_cache: Cache,
@@ -52,21 +55,21 @@ pub struct NetworkMap<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> {
 	interaction: Interaction, // Current interaction state
 
 	global_cursor_position: Point, // Position of cursor in the global coordinate plane (i.e. before scale and translation)
-	selected_node: Option<usize>, // Current selected node
+	selected_node: Option<NodeIndex>, // Current selected node
 }
 
 #[derive(Debug, Clone)]
-pub enum Message {
+pub enum Message<N: NetworkNode, E: NetworkEdge<N>> {
 	// Output
-	NodeSelected(usize),
-	EdgeClicked(usize),
-	NodeDragged(usize, Vector),
-	TriggerConnection(usize, usize),
+	NodeSelected(N::NodeId),
+	EdgeClicked(E::EdgeId),
+	NodeDragged(N::NodeId, Vector),
+	TriggerConnection(N::NodeId, N::NodeId),
 
 	// Data output
 	CanvasEvent(Event),
 }
-impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
+impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	const MIN_SCALING: f32 = 0.1;
 	const MAX_SCALING: f32 = 50.0;
 	const SCALING_SPEED: f32 = 30.0;
@@ -75,14 +78,13 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	pub fn set_connecting(&mut self) {
 		if let Some(selected) = self.selected_node { self.trigger_update(); self.interaction = Interaction::Connecting { from: selected, candidate: Either::Left(self.global_cursor_position) }; }
 	}
-	pub fn detect_hovering(&self) -> Option<usize> {
+	pub fn detect_hovering(&self) -> Option<NodeIndex> {
 		// Detect hovering over nodes
 		let mut hovering = None;
-		for node in self.nodes.node_weights() {
-			if node.check_mouseover(&self.global_cursor_position) {
-				let selected_id = node.unique_id();
+		for index in self.nodes.node_indices() {
+			if self.nodes[index].check_mouseover(&self.global_cursor_position) {
 				// sets node_selected if it is None or Some(value less than selected_id)
-				if hovering < Some(selected_id) { hovering = Some(selected_id) }
+				if hovering < Some(index) { hovering = Some(index) }
 			}
 		}
 		hovering
@@ -94,17 +96,18 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 		self.unique_id_map.insert(unique_id, node_index);
 		self.trigger_update();
 	}
-	pub fn add_edge(&mut self, from: usize, to: usize, weight: E) {
-		self.nodes.add_edge(NodeIndex::new(from), NodeIndex::new(to), weight);
+	pub fn add_edge(&mut self, weight: E) -> Option<()> {
+		self.nodes.add_edge(self.index(weight.source())?, self.index(weight.dest())?, weight); Some(())
 	}
-	pub fn remove_edge(&mut self, from: usize, to: usize) -> Option<E> {
-		self.nodes.remove_edge(self.nodes.find_edge(NodeIndex::new(from), NodeIndex::new(to))?)
+	pub fn remove_edge(&mut self, from: N::NodeId, to: N::NodeId) -> Option<E> {
+		self.nodes.remove_edge(self.nodes.find_edge(self.index(from)?, self.index(to)?)?)
 	}
+	pub fn index(&self, id: N::NodeId) -> Option<NodeIndex> { self.unique_id_map.get(&id).cloned() }
 	/// Make sure to call NetworkMap::update()
-	pub fn node_mut(&mut self, id: usize) -> Option<&mut N> { self.nodes.node_weight_mut(*self.unique_id_map.get(&id)?) }
-	pub fn node(&self, id: usize) -> Option<&N> { self.nodes.node_weight(*self.unique_id_map.get(&id)?) }
+	pub fn node_mut(&mut self, id: N::NodeId) -> Option<&mut N> { self.nodes.node_weight_mut(self.index(id)?) }
+	pub fn node(&self, id: N::NodeId) -> Option<&N> { self.nodes.node_weight(self.index(id)?) }
 
-	pub fn remove_node(&mut self, unique_id: usize) -> Option<()> {
+	pub fn remove_node(&mut self, unique_id: N::NodeId) -> Option<()> {
 		let node_index = self.unique_id_map.get(&unique_id)?;
 		self.nodes.remove_node(*node_index);
 		self.trigger_update();
@@ -129,7 +132,7 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 			selected_node: None,
 		}
 	}
-	pub fn view<'a>(&'a mut self) -> Element<'a, Message> {
+	pub fn view<'a>(&'a mut self) -> Element<'a, Message<N, E>> {
 		Canvas::new(self)
 			.width(Length::Fill)
 			.height(Length::Fill)
@@ -137,13 +140,13 @@ impl<N: NetworkNode, E: NetworkEdge, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	}
 }
 
-impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> for NetworkMap<N, E, Ty> {
+impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Message<N, E>> for NetworkMap<N, E, Ty> {
 	fn update(
 		&mut self,
 		event: Event,
 		bounds: Rectangle,
 		cursor: Cursor,
-	) -> (event::Status, Option<Message>) {
+	) -> (event::Status, Option<Message<N, E>>) {
 		let center = Vector::new(bounds.width / 2.0, bounds.height / 2.0);
 
 		let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
@@ -153,7 +156,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 		};
 		self.global_cursor_position = Point::new(cursor_position.x * (1.0 / self.scale), cursor_position.y * (1.0 / self.scale)) - self.translation;
 
-		let ret: (Option<Interaction>, Option<Message>) = match event {
+		let ret: (Option<Interaction>, Option<Message<N, E>>) = match event {
 			Event::Keyboard(_) => { (None, None) }
 			Event::Mouse(mouse_event) => {
 				match mouse_event {
@@ -182,7 +185,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 										(Some(Interaction::None), None)
 									}
 									Interaction::Connecting { from, candidate: Either::Right(to) } => {
-										(Some(Interaction::None), Some(Message::TriggerConnection(from, to)))
+										(Some(Interaction::None), Some(Message::TriggerConnection(self.nodes[from].unique_id(), self.nodes[to].unique_id())))
 									}
 									_ => (Some(Interaction::None), None)
 								}
@@ -280,12 +283,12 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 					edge.weight.render(frame, source, dest);
 				}
 
-				for node in self.nodes.node_weights() {
+				for node_index in self.nodes.node_indices() {
 					let hover = if let Interaction::Hovering(hovering_node)
 					 | Interaction::PressingNode(_, hovering_node)
 					 | Interaction::Connecting { from: _, candidate: Either::Right(hovering_node) }
-					 = self.interaction { hovering_node == node.unique_id() } else { false };
-					node.render(frame, hover, self.selected_node == Some(node.unique_id()));
+					 = self.interaction { hovering_node == node_index } else { false };
+					self.nodes[node_index].render(frame, hover, self.selected_node == Some(node_index));
 				}
 			});
 		});
@@ -303,10 +306,10 @@ impl<'a, N: NetworkNode, E: NetworkEdge, Ty: EdgeType> canvas::Program<Message> 
 			frame.with_save(|frame| {
 				frame.translate(self.translation);
 				if let Interaction::Connecting { from, candidate } = self.interaction {
-					let from = self.node(from).map(|n|Point::ORIGIN + n.position());
+					let from = self.nodes.node_weight(from).map(|n|Point::ORIGIN + n.position());
 					if let (Some(point_from), Some(point_to)) = (from, match candidate {
 						Either::Left(point) => Some(point),
-						Either::Right(id) => self.node(id).map(|n|Point::ORIGIN + n.position())
+						Either::Right(id) => self.nodes.node_weight(id).map(|n|Point::ORIGIN + n.position())
 					}) {
 						frame.stroke(&Path::line(point_from, point_to), Stroke { width: 2.0, ..Default::default() });
 					}

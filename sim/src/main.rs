@@ -20,7 +20,8 @@ fn main() {
 	netsim_embed_machine::iface::Iface::new().expect("netsim: tun adapters not supported");
 	
 	netsim_embed::run(async {
-		let (internet, _event_receiver, _action_sender) = Internet::new();
-		internet.run().await;
+		let internet = Internet::new("./target/debug/device");
+		let (runtime, _receiver, _sender) = internet.init().await;
+		internet.run(runtime).await;
 	});
 }

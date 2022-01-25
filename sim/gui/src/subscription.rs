@@ -38,17 +38,20 @@ impl<H, E> Recipe<H, E> for InternetRecipe where H: std::hash::Hasher {
 			move |state| async move {
 				match state {
 					State::Initialize(path) => {
-						let (internet, receiver, sender) = Internet::new();
-						if let Err(err ) = if let Some(_path) = path { unimplemented!() /* internet.load(&path) */ } else { Ok(()) } {
-							Some((
+						match if let Some(path) = path {
+							Internet::load(&path)
+						} else { Ok(Internet::new("./target/debug/device")) } {
+							Ok(internet) =>{
+								let (runtime, receiver, sender) = internet.init().await;
+								let join = task::spawn(internet.run(runtime));
+								Some((
+									Event::Init(sender),
+									State::Running(receiver, join)
+								))
+							},
+							Err(err) => Some((
 								Event::Error(err),
 								State::Finished,
-							))
-						} else {
-							let join = task::spawn(internet.run());
-							Some((
-								Event::Init(sender),
-								State::Running(receiver, join)
 							))
 						}
 					}

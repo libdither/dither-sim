@@ -2,8 +2,6 @@
 
 #[macro_use]
 extern crate derivative;
-#[macro_use]
-extern crate slotmap;
 
 use iced::{Application, Settings, window};
 use crate::gui::{NetSimApp, NetSimAppSettings};

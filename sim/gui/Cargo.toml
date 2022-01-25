@@ -20,13 +20,14 @@ derivative = "2.2.0"
 
 rand = "0.8.4"
 nalgebra = "0.29.0"
-slotmap = "1.0.6"
 futures = "0.3.17"
 serde = "1.0.130"
 log = "0.4.14"
 petgraph = "0.6.0"
 either = "1.6.1"
 iced_graphics = "0.2.0"
+
+[features]
 
 
 [package.metadata.nix]
