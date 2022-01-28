@@ -1,4 +1,4 @@
-use iced::{Align, Button, Checkbox, Column, Container, Element, Row, Text, Vector, button};
+use iced::{Column, Container, Element, button};
 use sim::{FieldPosition, InternetAction, InternetEvent, NodeIdx, NodeType};
 use futures::channel::mpsc;
 
@@ -32,12 +32,14 @@ pub enum Message {
 	ToggleSim(bool),
 	TriggerAddMachine, // Sends AddMachine action to network with current field position state
 	TriggerAddNetwork,
+	TriggerSave,
+	TriggerReload,
+	DebugPrint,
 
 	/// From tabs & loaded gui
 	RemoveNode(NodeIdx),
 	MoveNode(NodeIdx, FieldPosition),
 	ConnectNode(NodeIdx, NodeIdx),
-	MousePosition(Vector),
 	AddNode(FieldPosition, NodeType)
 }
 
@@ -66,8 +68,11 @@ impl State {
 		match message {
 			// Handle internet events
 			Message::InternetEvent(internet_event) => {
-				log::debug!("received internet event: {:?}", internet_event);
+				log::debug!("received InternetEvent: {:?}", internet_event);
 				match internet_event {
+					InternetEvent::ClearUI => {
+						self.tabs.network_tab.clear(); None
+					},
 					InternetEvent::NewMachine(id) => {
 						self.process_network_tab_msg(network_tab::Message::AddNode(id, NodeType::Machine))
 					},
@@ -87,8 +92,8 @@ impl State {
 						self.process_network_tab_msg(network_tab::Message::UpdateConnection(wire_idx, from, to, true))
 					}
 					InternetEvent::Error(err) => { match *err {
-						sim::InternetError::NodeConnectionError => { log::error!("Internet Error: Cannot connect two machines to each other"); },
-						_ => todo!(),
+						sim::InternetError::NodeConnectionError => { log::warn!("Internet Error: Cannot connect two machines to each other"); },
+						_ => log::error!("received InternetError: {}", *err),
 					} None },
 					//_ => { println!("Received Internet Event: {:?}", internet_event) }
 				}
@@ -102,13 +107,13 @@ impl State {
 				self.top_bar.toggle_sim = toggle;
 				None
 			}
-			Message::TriggerAddMachine => {
-				None
-			},
-			Message::TriggerAddNetwork => {
-				self.net_action(InternetAction::AddNetwork(self.field_position));
-				None
-			},
+			Message::TriggerSave => {
+				self.net_action(InternetAction::SaveInternet("./target/internet.bin".to_owned())); None
+			}
+			Message::TriggerReload => {
+				self.net_action(InternetAction::RequestAllNodes); None
+			}
+			Message::DebugPrint => { self.net_action(InternetAction::DebugPrint); None }
 			// Handle general events
 			Message::MoveNode(index, new_position) => {
 				self.net_action(InternetAction::SetPosition(index, new_position));
@@ -129,7 +134,7 @@ impl State {
 	}
 	pub fn view(&mut self) -> Element<Message> {
 		Column::new()
-			.push(
+			/* .push(
 				Row::new().push(
 					Text::new("Top Bar")
 				)/* .push( // Step Network Button
@@ -138,16 +143,16 @@ impl State {
 				) */.push( // Run Network Continuously Toggle
 					Checkbox::new(self.top_bar.toggle_sim, String::from("Run Network"), Message::ToggleSim)
 				).spacing(10).align_items(Align::Center).padding(3)
-				.push(
+				/* .push(
 					Button::new(&mut self.top_bar.add_machine, Text::new("Add Machine"))
         			.on_press(Message::TriggerAddMachine)
 				).push(
 					Button::new(&mut self.top_bar.add_network, Text::new("Add Network"))
         			.on_press(Message::TriggerAddNetwork)
-				)/* .push(
+				).push(
 					Text::new(format!("({}, {})", self.tabs.network_tab.map.translation.x, self.tabs.network_tab.map.translation.y))
 				) */
-			).push(
+			) */.push(
 				Container::new(
 					self.tabs.view().map(move |m| Message::TabUpdate(m))
 				)

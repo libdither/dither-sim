@@ -41,13 +41,20 @@ impl<H, E> Recipe<H, E> for InternetRecipe where H: std::hash::Hasher {
 						match if let Some(path) = path {
 							Internet::load(&path)
 						} else { Ok(Internet::new("./target/debug/device")) } {
-							Ok(internet) =>{
-								let (runtime, receiver, sender) = internet.init().await;
-								let join = task::spawn(internet.run(runtime));
-								Some((
-									Event::Init(sender),
-									State::Running(receiver, join)
-								))
+							Ok(mut internet) =>{
+								match internet.init().await {
+									Ok((runtime, receiver, sender)) => {
+										let join = task::spawn(internet.run(runtime));
+										Some((
+											Event::Init(sender),
+											State::Running(receiver, join)
+										))
+									}
+									Err(err) =>  Some((
+										Event::Error(err),
+										State::Finished,
+									)),
+								}
 							},
 							Err(err) => Some((
 								Event::Error(err),

@@ -95,6 +95,9 @@ impl NetworkTab {
 			map: NetworkMap::new(),
 		}
 	}
+	pub fn clear(&mut self) {
+		self.map = NetworkMap::new();
+	}
 
 	fn mouse_field_position(&self) -> FieldPosition {
 		let cursor_pos = self.map.global_cursor_position();
@@ -103,19 +106,23 @@ impl NetworkTab {
 
 	pub fn process(&mut self, message: Message) -> Option<loaded::Message> {
 		match message {
-			Message::AddNode(id, node_type) => {
-				self.map.add_node(NetworkTabNode::new(id, node_type));
-			},
 			Message::UpdateNode(id, info) => {
-				let node = self.map.node_mut(id).unwrap();
+				// Get node or add it if doesn't exist.
+				let node = if let Some(node) = self.map.node_mut(id) { node } else {
+					self.map.add_node(NetworkTabNode::new(id, info.node_type));
+					self.map.node_mut(id).unwrap()
+				};
 				node.field_position = info.position;
 				node.ip_addr = info.local_address;
 			}
-			Message::UpdateMachine(_, _) => {},
-    		Message::UpdateNetwork(_, _) => {},
 			Message::RemoveNode(idx) => {
 				self.map.remove_node(idx);
 			},
+			Message::UpdateMachine(id, info) => {
+				
+			},
+    		Message::UpdateNetwork(id, info) => {},
+			
 			Message::UpdateConnection(conn_id, from, to, activation) => {
 				if activation {
 					self.map.add_edge(NetworkTabEdge { id: conn_id, source: from, dest: to, latency: 5 });
@@ -145,6 +152,20 @@ impl NetworkTab {
 												self.map.set_connecting();
 											}
 											_ => {}
+										}
+									}
+									keyboard::Modifiers { shift: false, control: true, alt: false, logo: false } => {
+										match key_code {
+											keyboard::KeyCode::S => {
+												return Some(loaded::Message::TriggerSave);
+											}
+											keyboard::KeyCode::R => {
+												return Some(loaded::Message::TriggerReload);
+											}
+											keyboard::KeyCode::P => {
+												return Some(loaded::Message::DebugPrint);
+											}
+											_ => {},
 										}
 									}
 									_ => {}
