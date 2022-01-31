@@ -8,7 +8,7 @@ use netsim_embed::{Ipv4Range, Ipv4Route, Ipv4Router, Machine, MachineId, Plug};
 use node::{NodeID, RouteCoord};
 use slotmap::SecondaryMap;
 
-use crate::internet::{InternetAction, InternetError, NodeIdx, WireIdx};
+use crate::internet::{InternetAction, InternetRuntime, InternetError, NodeIdx, WireIdx};
 
 use super::netsim_ext::{Wire, WireHandle};
 
@@ -30,7 +30,7 @@ pub struct InternetMachine {
 	internal_latency: Latency,
 	executable: String,
 	pub save_path: Option<String>,
-	pub connection: Option<(WireIdx, Ipv4Addr)>,
+	pub connection: Option<(WireIdx, NodeIdx, Ipv4Addr)>,
 	#[serde(skip)]
 	#[derivative(Debug="ignore")]
 	runtime: Option<MachineRuntime>,
@@ -116,17 +116,17 @@ impl InternetMachine {
 		} else { Err(MachineError::NoRuntime) }
 	}
 
-	pub async fn connect(&mut self, wire_idx: WireIdx, ip_addr: Ipv4Addr) -> Result<Plug, MachineError> {
+	pub async fn connect(&mut self, wire_idx: WireIdx, node_idx: NodeIdx, ip_addr: Ipv4Addr) -> Result<Plug, MachineError> {
 		if None == self.connection {
 			let (outgoing_plug, outgoing_internal_plug) = netsim_embed::wire();
 			self.runtime()?.internal_wire_handle.swap_plug_a(outgoing_internal_plug).await;
-			self.connection = Some((wire_idx, ip_addr));
+			self.connection = Some((wire_idx, node_idx, ip_addr));
 			Ok(outgoing_plug)
 		} else { Err(MachineError::AlreadyConnected) }
 	}
 	/// Returns the wire connection
 	pub fn connection(&mut self) -> Option<WireIdx> {
-		if let Some((wire_idx, _)) = self.connection { Some(wire_idx) } else { None }
+		if let Some((wire_idx, _, _)) = self.connection { Some(wire_idx) } else { None }
 	}
 	pub fn disconnect(&mut self) -> Result<(), MachineError> {
 		if self.connection.is_some() { self.connection = None; Ok(()) }
@@ -251,7 +251,7 @@ pub enum NodeVariant {
 pub struct InternetNode {
 	pub variant: NodeVariant,
 	/// Position of this Node in the Internet Simulation Field
-	position: FieldPosition,
+	pub position: FieldPosition,
 	/// Index of Node in Internet.map
 	pub id: NodeIdx,
 }
@@ -275,7 +275,7 @@ impl InternetNode {
 				(Latency::MIN, Some(network.local_addr()), NodeType::Network)
 			},
 			NodeVariant::Machine(machine) => {
-				(machine.latency(), machine.connection.map(|(_, addr)|addr), NodeType::Machine)
+				(machine.latency(), machine.connection.map(|(_, _, addr)|addr), NodeType::Machine)
 			},
 		};
 		NodeInfo {
@@ -284,7 +284,7 @@ impl InternetNode {
 			local_address,
 			node_type,
 			connections: match &self.variant {
-				NodeVariant::Machine(machine) => if let Some((wire_idx, _)) = machine.connection { vec![wire_idx] } else { vec![] },
+				NodeVariant::Machine(machine) => if let Some((wire_idx, _, _)) = machine.connection { vec![wire_idx] } else { vec![] },
 				NodeVariant::Network(network) => network.connections.iter().map(|(wire_idx, _)|wire_idx).collect(),
 			}
 		}
@@ -302,8 +302,8 @@ impl InternetNode {
 		}
 		Ok(())
 	}
-	pub fn latency_distance(&self, other: &Self) -> Latency {
-		self.position.map(|v|v as f64).metric_distance(&other.position.map(|v|v as f64)) as Latency
+	pub fn latency_distance(from: &FieldPosition, to: &FieldPosition) -> Latency {
+		from.map(|v|v as f64).metric_distance(&to.map(|v|v as f64)) as Latency
 	}
 	pub fn machine(&self) -> Option<&InternetMachine> {
 		match &self.variant { NodeVariant::Machine(m) => Some(m), _ => None }
@@ -316,6 +316,25 @@ impl InternetNode {
 	}
 	pub fn network_mut(&mut self) -> Option<&mut InternetNetwork> {
 		match &mut self.variant { NodeVariant::Network(n) => Some(n), _ => None }
+	}
+	pub async fn update_position(&mut self, runtime: &mut InternetRuntime, position: FieldPosition) -> Result<(), InternetError> {
+		self.position = position;
+		*runtime.location(self.id)? = position;
+		match &mut self.variant {
+			NodeVariant::Network(network) => {
+				for (wire_idx, (node_idx, _)) in network.connections.iter() {
+					let latency = InternetNode::latency_distance(runtime.location(node_idx.clone())?, &position);
+					runtime.wire_handle(wire_idx)?.set_delay(Duration::from_micros(latency)).await;
+				}
+			}
+			NodeVariant::Machine(machine) => {
+				if let Some((wire_idx, node_idx, _)) = machine.connection {
+					let latency = InternetNode::latency_distance(runtime.location(node_idx)?, &position);
+					runtime.wire_handle(wire_idx)?.set_delay(Duration::from_micros(latency)).await;
+				}
+			}
+		}
+		Ok(())
 	}
 }
 

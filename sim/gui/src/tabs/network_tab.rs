@@ -26,7 +26,7 @@ impl NetworkNode for NetworkTabNode {
 	fn position(&self) -> Vector {
 		Vector::new(self.field_position.x as f32, self.field_position.y as f32)
 	}
-	fn render(&self, frame: &mut canvas::Frame, hover: bool, selected: bool) {
+	fn render(&self, frame: &mut canvas::Frame, hover: bool, selected: bool, scaling: f32) {
 		let point = {
 			Point::new(self.field_position.x as f32, self.field_position.y as f32)
 		};
@@ -43,7 +43,7 @@ impl NetworkNode for NetworkTabNode {
 		frame.fill_text(canvas::Text { content:
 			format!("ID: {}",
 			self.id),
-			position: point, color: Color::BLACK, size: 20.0,
+			position: point, color: Color::BLACK, size: radius * scaling,
 			horizontal_alignment: iced::HorizontalAlignment::Center, vertical_alignment: iced::VerticalAlignment::Center,
 			..Default::default()
 		});
@@ -80,6 +80,7 @@ pub enum Message {
 	UpdateMachine(NodeIdx, sim::MachineInfo),
 	UpdateNetwork(NodeIdx, sim::NetworkInfo),
 	UpdateConnection(WireIdx, NodeIdx, NodeIdx, bool),
+	RemoveConnection(WireIdx),
 	RemoveNode(NodeIdx), // Removes edges too.
 
 	NetMapMessage(network_map::Message<NetworkTabNode, NetworkTabEdge>),
@@ -114,6 +115,7 @@ impl NetworkTab {
 				};
 				node.field_position = info.position;
 				node.ip_addr = info.local_address;
+				self.map.trigger_update();
 			}
 			Message::RemoveNode(idx) => {
 				self.map.remove_node(idx);
@@ -123,19 +125,20 @@ impl NetworkTab {
 			},
     		Message::UpdateNetwork(id, info) => {},
 			
-			Message::UpdateConnection(conn_id, from, to, activation) => {
-				if activation {
-					self.map.add_edge(NetworkTabEdge { id: conn_id, source: from, dest: to, latency: 5 });
-				} else {
-					self.map.remove_edge(from, to);
-				}
-				
+			Message::UpdateConnection(wire_idx, from, to, activation) => {
+				self.map.add_edge(NetworkTabEdge { id: wire_idx, source: from, dest: to, latency: 5 });
 			},
+			Message::RemoveConnection(wire_idx) => {
+				self.map.remove_edge(wire_idx);
+			}
 			Message::NetMapMessage(netmap_msg) => {
 				match netmap_msg {
 					network_map::Message::TriggerConnection(from, to) => {
 						return Some(loaded::Message::ConnectNode(from, to));
 					},
+					network_map::Message::NodeDragged(node, point) => {
+						return Some(loaded::Message::MoveNode(node, FieldPosition::new(point.x as i32, point.y as i32)));
+					}
 					network_map::Message::CanvasEvent(canvas::Event::Keyboard(keyboard_event)) => {
 						match keyboard_event {
 							keyboard::Event::KeyReleased { key_code, modifiers } => {
@@ -150,6 +153,9 @@ impl NetworkTab {
 											}
 											keyboard::KeyCode::C => {
 												self.map.set_connecting();
+											}
+											keyboard::KeyCode::G => {
+												self.map.grab_node();
 											}
 											_ => {}
 										}

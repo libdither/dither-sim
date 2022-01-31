@@ -88,6 +88,7 @@ pub enum InternetEvent {
 	NetworkInfo(NodeIdx, NetworkInfo),
 	/// Connection Info
 	ConnectionInfo(WireIdx, NodeIdx, NodeIdx), // Whether or not to activate / deactivate a connection between two nodes
+	RemoveConnection(WireIdx),
 
 	/// Reset 
 	ClearUI,
@@ -145,6 +146,7 @@ pub struct Internet {
 }
 
 pub struct InternetRuntime {
+	node_locations: SecondaryMap<NodeIdx, FieldPosition>,
 	wire_handles: SecondaryMap<WireIdx, WireHandle>,
 
 	action_receiver: Option<mpsc::Receiver<InternetAction>>,
@@ -159,6 +161,12 @@ impl InternetRuntime {
 	}
 	fn action(&mut self, action: InternetAction) -> Result<(), InternetError> {
 		self.action_sender.try_send(action).map_err(|_|InternetError::ActionSenderClosed)
+	}
+	fn location(&mut self, index: NodeIdx) -> Result<&mut FieldPosition, InternetError> {
+		self.node_locations.get_mut(index).ok_or(InternetError::UnknownNode { index })
+	}
+	fn wire_handle(&mut self, wire_idx: WireIdx) -> Result<&mut WireHandle, InternetError> {
+		self.wire_handles.get_mut(wire_idx).ok_or(InternetError::UnknownWire { index: wire_idx })
 	}
 }
 
@@ -211,13 +219,15 @@ impl Internet {
 		let action_sender_ret = action_sender.clone();
 
 		let mut runtime = InternetRuntime {
+			node_locations: SecondaryMap::default(),
 			wire_handles: SecondaryMap::default(),
 			action_receiver: Some(action_receiver),
 			action_sender,
 			event_sender,
 		};
 		// Init Nodes
-		for (_, node) in self.nodes.iter_mut() {
+		for (node_idx, node) in self.nodes.iter_mut() {
+			runtime.node_locations.insert(node_idx, node.position.clone());
 			match &mut node.variant {
 				NodeVariant::Machine(machine) => {
 					machine.init(action_sender_ret.clone());
@@ -231,7 +241,7 @@ impl Internet {
 		// Init Wire Handles
 		for (wire_idx, (node1, node2)) in self.wires.clone().into_iter() {
 			log::debug!("wire: {} connecting {} and {}", wire_idx, node1, node2);
-			let delay = Duration::from_micros(self.node(node1)?.latency_distance(self.node(node2)?));
+			let delay = Duration::from_micros(InternetNode::latency_distance(&self.node(node1)?.position, &self.node(node2)?.position));
 			let plug_a = self.node_mut(node1)?.init_plug(wire_idx)?;
 			let plug_b = self.node_mut(node2)?.init_plug(wire_idx)?;
 			runtime.wire_handles.insert(wire_idx, Wire::connect(Wire { delay }, plug_a, plug_b));
@@ -288,8 +298,10 @@ impl Internet {
 						let wire_idx = self.connect(runtime, from, to).await?;
 						runtime.send_event(InternetEvent::ConnectionInfo(wire_idx, from, to))?;
 					}
-					InternetAction::SetPosition(_node, _position) => {
-						//self.machine(node)?.update_position(position)?;
+					InternetAction::SetPosition(index, position) => {
+						let node = self.node_mut(index)?;
+						node.update_position(runtime, position).await?;
+						runtime.send_event(InternetEvent::NodeInfo(index, node.node_info()))?;
 					}
 					InternetAction::GetNodeInfo(index) => {
 						runtime.send_event(InternetEvent::NodeInfo(index, self.node(index)?.node_info()))?;
@@ -355,7 +367,7 @@ impl Internet {
 		let node2 = self.node(to)?;
 		match (&node1.variant, &node2.variant) {
 			(Network(net1), Network(net2)) => {
-				let delay = Duration::from_micros(node1.latency_distance(node2));
+				let delay = Duration::from_micros(InternetNode::latency_distance(&node1.position, &node2.position));
 				let (route1, route2) = (net1.route(), net2.route());
 
 				let wire_idx = self.wires.insert((from, to));
@@ -368,7 +380,7 @@ impl Internet {
 			(Network(net), Machine(machine)) | (Machine(machine), Network(net)) => {
 				let machine_id = machine.id; let network_id = net.id;
 				// Disconnect if connected
-				if let Some((wire_idx, _)) = self.machine(machine_id)?.connection {
+				if let Some((wire_idx, _, _)) = self.machine(machine_id)?.connection {
 					self.unwire(runtime, wire_idx)?;
 				}
 
@@ -378,8 +390,8 @@ impl Internet {
 				let network = self.network_mut(network_id)?;
 				let addr = network.unique_addr();
 				let net_plug = network.connect(wire_idx, machine_id, vec![addr.into()])?;
-				let machine_plug = self.machine_mut(machine_id)?.connect(wire_idx, addr).await?;
-				let delay = Duration::from_micros(self.node(machine_id)?.latency_distance(self.node(network_id)?));
+				let machine_plug = self.machine_mut(machine_id)?.connect(wire_idx, network_id, addr).await?;
+				let delay = Duration::from_micros(InternetNode::latency_distance(&self.node(machine_id)?.position, &self.node(network_id)?.position));
 
 				//let delay = self.node(machine_id)?.position
 				runtime.wire_handles.insert(wire_idx, Wire::connect(Wire { delay }, net_plug, machine_plug));
@@ -391,6 +403,7 @@ impl Internet {
 	fn unwire(&mut self, runtime: &mut InternetRuntime, wire_idx: WireIdx) -> Result<(), InternetError> {
 		runtime.wire_handles.remove(wire_idx);
 		if let Some((node1, node2)) = self.wires.remove(wire_idx) {
+			runtime.send_event(InternetEvent::RemoveConnection(wire_idx))?;
 			self.node_mut(node1)?.disconnect(wire_idx)?;
 			self.node_mut(node2)?.disconnect(wire_idx)?;
 		}

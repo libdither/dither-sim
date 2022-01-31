@@ -91,6 +91,9 @@ impl State {
 					InternetEvent::ConnectionInfo(wire_idx, from, to) => {
 						self.process_network_tab_msg(network_tab::Message::UpdateConnection(wire_idx, from, to, true))
 					}
+					InternetEvent::RemoveConnection(wire_idx) => {
+						self.process_network_tab_msg(network_tab::Message::RemoveConnection(wire_idx))
+					}
 					InternetEvent::Error(err) => { match *err {
 						sim::InternetError::NodeConnectionError => { log::warn!("Internet Error: Cannot connect two machines to each other"); },
 						_ => log::error!("received InternetError: {}", *err),
