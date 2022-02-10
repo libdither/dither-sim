@@ -28,7 +28,9 @@ impl State {
 				None
 			}
 			Message::TriggerLoad => {
-				self.currently_loading_recipe = Some(InternetRecipe { path: self.valid_file.then(||self.text_input_string.clone()) });
+				self.currently_loading_recipe = Some(InternetRecipe {
+					path: self.valid_file.then(|| self.text_input_string.clone())
+				});
 				Some(super::Message::LoadInternet)
 			},
 		}

@@ -3,7 +3,7 @@
 pub use iced::Settings;
 use iced::{executor, Application, Clipboard, Command, Element, Subscription};
 
-use sim::InternetAction;
+use sim::{InternetAction, InternetError};
 
 use crate::subscription::{self, Event};
 
@@ -23,7 +23,7 @@ pub enum Message {
 	LoadInternet,
 
 	LoadedMessage(loaded::Message),
-	InternetEvent(subscription::Event),
+	SubscriptionEvent(subscription::Event),
 	InternetAction(InternetAction),
 }
 
@@ -47,15 +47,15 @@ impl Application for NetSimApp {
 		match self {
 			NetSimApp::Loading(state) => {
 				if let Some(recipe) = &state.currently_loading_recipe {
-					Subscription::from_recipe(recipe.clone()).map(|event| Message::InternetEvent(event))
+					Subscription::from_recipe(recipe.clone()).map(Message::SubscriptionEvent)
 				} else {
 					Subscription::none()
 				}
 			}
 			// State is changed to Loading once Init Event triggered from Subscription
 			NetSimApp::Loaded(state) => {
-				Subscription::from_recipe(state.internet_recipe.clone())
-				.map(|event| Message::InternetEvent(event))},
+				Subscription::from_recipe(state.internet_recipe.clone()).map(Message::SubscriptionEvent)
+			},
 		}
 	}
 
@@ -72,7 +72,7 @@ impl Application for NetSimApp {
 					Message::LoadInternet => {
 						println!("Loading Internet: {:?}", state.currently_loading_recipe);
 					}
-					Message::InternetEvent(event) => {
+					Message::SubscriptionEvent(event) => {
 						match event {
 							Event::Init(sender) => {
 								*self = NetSimApp::Loaded(loaded::State::new(
@@ -80,7 +80,13 @@ impl Application for NetSimApp {
 									state.currently_loading_recipe.take().expect("There should be a recipe if internet is loaded")
 								));
 							}
-							_ => log::error!("Received internet event {:?} in Loading state, state should have already switched to Loaded", event)
+							Event::Error(error) => {
+								match error {
+									InternetError::Other(err) => log::error!("InternetError: {}", err),
+									_ => log::error!("Received InternetError {:?} in Loading state, but error doesn't apply", error),
+								}
+							}
+							_ => log::error!("Received subscription event {:?} in Loading state, state should have already switched to Loaded", event)
 						}
 					}
 					_ => log::error!("Received Message: {:?} but inapplicable to loading state", message)
@@ -99,9 +105,8 @@ impl Application for NetSimApp {
 							log::error!("Couldn't send action to simulation: {:?}", err);
 						}
 					}
-					Message::InternetEvent(event) => {
+					Message::SubscriptionEvent(event) => {
 						match event {
-							Event::Init(sender) => state.internet_action = sender,
 							Event::Event(internet_event) => {
 								state.process(loaded::Message::InternetEvent(internet_event));
 							}
@@ -110,6 +115,7 @@ impl Application for NetSimApp {
 								log::info!("Internet Sim closed");
 								*self = NetSimApp::Loading(loading::State::default());
 							},
+							_ => log::error!("Received subscription event {:?} in Loaded state, but event only applies to Loading state", event),
 						}
 					}
 					_ => log::error!("Received Message: {:?} but inapplicable to loaded state", message)

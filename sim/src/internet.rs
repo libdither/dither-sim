@@ -246,8 +246,10 @@ impl Internet {
 			let plug_b = self.node_mut(node2)?.init_plug(wire_idx)?;
 			runtime.wire_handles.insert(wire_idx, Wire::connect(Wire { delay }, plug_a, plug_b));
 		}
-
-		runtime.action(InternetAction::RequestAllNodes)?;
+		if self.nodes.len() > 0 {
+			runtime.action(InternetAction::RequestAllNodes)?;
+		}
+		
 
 		Ok((runtime, event_receiver, action_sender_ret))
 	}
@@ -335,8 +337,8 @@ impl Internet {
 				}
 			};
 			if let Err(err) = res {
-				if let Err(_) = runtime.send_event(InternetEvent::Error(Arc::new(err))) {
-					log::error!("InternetEvent receiver closed unexpectedly");
+				if let Err(err) = runtime.send_event(InternetEvent::Error(Arc::new(err))) {
+					log::error!("InternetEvent receiver closed unexpectedly when sending error: {:?}", err);
 					break;
 				}
 			}

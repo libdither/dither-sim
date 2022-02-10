@@ -21,7 +21,7 @@ fn main() {
 	
 	netsim_embed::run(async {
 		let internet = Internet::new("./target/debug/device");
-		let (runtime, _receiver, _sender) = internet.init().await;
+		let (runtime, _receiver, _sender) = internet.init().await.expect("Failed to initialize network");
 		internet.run(runtime).await;
 	});
 }

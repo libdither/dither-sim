@@ -6,17 +6,7 @@ use sim::{Internet, InternetAction, InternetError, InternetEvent};
 use futures::{StreamExt, channel::mpsc};
 use async_std::task::{self, JoinHandle};
 
-/* pub fn simulate(path: Option<&str>) -> InternetRecipe {
-	let mut internet = Internet::new();
-	if let Some(path) = path {
-		if let Err(err) = internet.load(path) {
-			log::warn!("Failed to load Internet Sim: {:?}", err);
-		}
-	}
-	
-	internet.run()
-} */
-
+// NO TOUCHIE: iced subscriptions system is really finicky, don't mess with it.
 #[derive(Debug, Clone)]
 pub struct InternetRecipe {
 	pub path: Option<String>,
@@ -38,6 +28,7 @@ impl<H, E> Recipe<H, E> for InternetRecipe where H: std::hash::Hasher {
 			move |state| async move {
 				match state {
 					State::Initialize(path) => {
+						log::debug!("Initializing Network Subscription from: {:?}", path);
 						match if let Some(path) = path {
 							Internet::load(&path)
 						} else { Ok(Internet::new("./target/debug/device")) } {
