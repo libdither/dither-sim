@@ -26,6 +26,7 @@ log = "0.4.14"
 petgraph = "0.6.0"
 either = "1.6.1"
 iced_graphics = "0.2.0"
+libdither = { version = "0.1.0", path = "../../dither" }
 
 [features]
 

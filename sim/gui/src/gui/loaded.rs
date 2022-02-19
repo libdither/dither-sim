@@ -2,7 +2,7 @@ use iced::{Column, Container, Element, button};
 use sim::{FieldPosition, InternetAction, InternetEvent, NodeIdx, NodeType};
 use futures::channel::mpsc;
 
-use crate::{subscription::InternetRecipe, tabs::{self, TabBar, network_tab}};
+use crate::{subscription::InternetRecipe, tabs::{self, TabBar, dither_tab, network_tab}};
 
 #[derive(Default)]
 pub struct TopBar {
@@ -64,6 +64,9 @@ impl State {
 	fn process_network_tab_msg(&mut self, network_msg: network_tab::Message) -> Option<super::Message> {
 		self.process_tabmsg(tabs::Message::NetworkTab(network_msg))
 	}
+	fn process_dither_tab_msg(&mut self, dither_msg: dither_tab::Message) -> Option<super::Message> {
+		self.process_tabmsg(tabs::Message::DitherTab(dither_msg))
+	}
 	pub fn process(&mut self, message: Message) -> Option<super::Message> {
 		match message {
 			// Handle internet events
@@ -83,7 +86,8 @@ impl State {
 						self.process_network_tab_msg(network_tab::Message::UpdateNode(id, info))
 					},
 					InternetEvent::MachineInfo(id, info) => {
-						self.process_network_tab_msg(network_tab::Message::UpdateMachine(id, info))
+						// self.process_network_tab_msg(network_tab::Message::UpdateMachine(id, info))
+						self.process_dither_tab_msg(dither_tab::Message::UpdateMachine(id, info))
 					},
 					InternetEvent::NetworkInfo(id, info) => {
 						self.process_network_tab_msg(network_tab::Message::UpdateNetwork(id, info))

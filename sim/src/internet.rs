@@ -20,6 +20,7 @@ use futures::channel::mpsc;
 use netsim_embed::Ipv4RangeIter;
 
 use device::{DeviceCommand, DeviceEvent, DitherEvent};
+pub use node::{self, RouteCoord, NodeID, net};
 
 mod netsim_ext;
 mod internet_node;

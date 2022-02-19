@@ -74,9 +74,9 @@ impl DitherCore {
 							DitherCommand::GetNodeInfo => self.node_action_sender.try_send(NodeAction::NetAction(NetAction::GetNodeInfo))?,
 						}
 					};
-					if let Err(err) = result { log::error!("Dither Command error: {}", err) }
+					if let Err(err) = result { println!("Dither Command error: {}", err) }
 				}
-				net_action = node_network_receiver.recv() => { // Listen for network actions from Node impl
+				net_action = node_network_receiver.recv() => { // Listen for net actions from Dither Node's Network API
 					if let Some(net_action) = net_action {
 						match net_action {
 							NetAction::Incoming(connection) => {

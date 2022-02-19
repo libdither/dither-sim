@@ -75,7 +75,7 @@ impl InternetMachine {
 			 = Machine::new(MachineId(self.id.as_usize()), netsim_machine_plug, async_process::Command::new(self.executable.clone())).await;
 
 			let machine_id = self.id;
-			let event_join_handle = task::spawn(async move { 
+			let event_join_handle = task::spawn(async move {
 				while let Some(device_event) = device_event_receiver.next().await {
 					if let Err(err) = internet_action_sender.send(InternetAction::HandleDeviceEvent(machine_id, device_event)).await {
 						log::error!("Internet Action Sender closed: {:?}", err); break;

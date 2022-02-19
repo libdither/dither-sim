@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
 	// Stdout parsing thread
 	let parse_events = tokio::spawn(async move {
 		while let Some(event) = event_receiver.recv().await {
-			println!("{}", event); // Print to stdout
+			println!("<{}", event); // Print to stdout, requires '<' to be marked as event
 		}
 	});
 
@@ -56,13 +56,15 @@ async fn main() -> anyhow::Result<()> {
 		loop {
 			tokio::select! {
 				dither_event = dither_event_receiver.recv() => {
-					println!("Received event: {dither_event:?}");
 					let result: anyhow::Result<()> = try {
 						match dither_event.ok_or(anyhow!("failed to receive DitherEvent"))? {
 							event => event_sender.try_send(DeviceEvent::DitherEvent(event)).context("failed to send device event")?
 						}
 					};
-					if let Err(err) = result { event_sender.try_send(DeviceEvent::Error(format!("{:?}", err))).unwrap(); }
+					if let Err(err) = result {
+						println!("Failed to send Device Event: {:?}", err);
+						event_sender.try_send(DeviceEvent::Error(format!("{:?}", err))).unwrap();
+					}
 				}
 				command = command_receiver.recv() => {
 					let result: anyhow::Result<()> = try {

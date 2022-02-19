@@ -62,7 +62,7 @@ impl TabBar {
 		match message {
 			Message::TabSelected(selected) => self.active_tab = selected,
 			Message::NetworkTab(message) => return self.network_tab.process(message),
-			Message::DitherTab(message) => self.dither_tab.update(message),
+			Message::DitherTab(message) => return self.dither_tab.process(message),
 		}
 		None
 	}
