@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 #![feature(try_blocks)]
 
+use std::convert::TryFrom;
+
 pub use commands::{DitherCommand, DitherEvent};
 use futures::StreamExt;
 use libp2p::{Transport, core::transport::{ListenerEvent, upgrade}, identity, mplex, noise, tcp::TokioTcpConfig};
@@ -72,21 +74,31 @@ impl DitherCore {
 					let result: anyhow::Result<()> = try {
 						match dither_command.ok_or(anyhow::anyhow!("failed to receive dither command"))? {
 							DitherCommand::GetNodeInfo => self.node_action_sender.try_send(NodeAction::NetAction(NetAction::GetNodeInfo))?,
+							DitherCommand::Bootstrap(node_id, addr) => self.node_action_sender.try_send(NodeAction::Bootstrap(node_id, addr))?,
 						}
 					};
 					if let Err(err) = result { println!("Dither Command error: {}", err) }
 				}
 				net_action = node_network_receiver.recv() => { // Listen for net actions from Dither Node's Network API
 					if let Some(net_action) = net_action {
-						match net_action {
-							NetAction::Incoming(connection) => {
-								println!("Received Connection from: {:?}", connection);
+						let result: anyhow::Result<()> = try {
+							match net_action {
+								NetAction::Incoming(connection) => {
+									println!("Received Connection from: {:?}", connection);
+								}
+								NetAction::Connect(addr) => {
+									let multiaddr = Multiaddr::try_from(addr.0)?;
+									println!("Dialing: {}", multiaddr);
+									let (peer, _stream) = transport.clone().dial(multiaddr)?.await?;
+									println!("Established connection with: {:?}", peer);
+								}
+								NetAction::NodeInfo(node_info) => {
+									self.event_sender.try_send(DitherEvent::NodeInfo(node_info)).expect("failed to send dither event");
+								}
+								_ => {},
 							}
-							NetAction::NodeInfo(node_info) => {
-								self.event_sender.try_send(DitherEvent::NodeInfo(node_info)).expect("failed to send dither event");
-							}
-							_ => {},
-						}
+						};
+						if let Err(err) = result { println!("NetAction error: {} at {}", err, err.backtrace()) }
 					} else { break; }
 				}
 				peer_event = listener.next() => { // Listen for peer events from libp2p

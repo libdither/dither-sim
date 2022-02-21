@@ -46,7 +46,7 @@ pub trait NetworkEdge<N: NetworkNode>: Sized + 'static {
 }
 
 pub struct NetworkMap<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> {
-	nodes: Graph<N, E, Ty>, // Node graph data structure
+	pub nodes: Graph<N, E, Ty>, // Node graph data structure
 	node_id_map: HashMap<N::NodeId, NodeIndex>, // Maps unique node ids to indicies into local node storage
 	edge_id_map: HashMap<E::EdgeId, EdgeIndex>,
 	node_cache: Cache, // Stores geometry of last drawn update

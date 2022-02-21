@@ -14,7 +14,7 @@ iced = { version = "0.3.0", features = ["canvas" ] }
 iced_aw = { git = "https://github.com/zyansheep/iced_aw", features = ["tabs"] }
 iced_futures = "0.3.0"
 
-anyhow = "1.0.44"
+anyhow = "1.0.54"
 env_logger = "0.9.0"
 derivative = "2.2.0"
 
@@ -27,6 +27,8 @@ petgraph = "0.6.0"
 either = "1.6.1"
 iced_graphics = "0.2.0"
 libdither = { version = "0.1.0", path = "../../dither" }
+ron = "0.7.0"
+thiserror = "1.0.30"
 
 [features]
 

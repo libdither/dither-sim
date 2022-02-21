@@ -2,6 +2,10 @@
 
 #[macro_use]
 extern crate derivative;
+#[macro_use]
+extern crate anyhow;
+#[macro_use]
+extern crate thiserror;
 
 use iced::{Application, Settings, window};
 use crate::gui::{NetSimApp, NetSimAppSettings};

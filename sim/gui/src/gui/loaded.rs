@@ -1,4 +1,5 @@
-use iced::{Column, Container, Element, button};
+use iced::{Column, Container, Element, TextInput, button, text_input};
+use libdither::DitherCommand;
 use sim::{FieldPosition, InternetAction, InternetEvent, NodeIdx, NodeType};
 use futures::channel::mpsc;
 
@@ -10,6 +11,8 @@ pub struct TopBar {
 	toggle_sim: bool,
 	add_machine: button::State,
 	add_network: button::State,
+	action_box_state: text_input::State,
+	action_box_text: String,
 }
 
 pub struct State {
@@ -30,6 +33,9 @@ pub enum Message {
 	/// From view
 	TabUpdate(tabs::Message),
 	ToggleSim(bool),
+	ActionBoxUpdate(String),
+	ActionBoxSubmit,
+
 	TriggerAddMachine, // Sends AddMachine action to network with current field position state
 	TriggerAddNetwork,
 	TriggerSave,
@@ -40,7 +46,9 @@ pub enum Message {
 	RemoveNode(NodeIdx),
 	MoveNode(NodeIdx, FieldPosition),
 	ConnectNode(NodeIdx, NodeIdx),
-	AddNode(FieldPosition, NodeType)
+	DitherCommand(NodeIdx, DitherCommand),
+	AddNode(FieldPosition, NodeType),
+	DisplayError(String),
 }
 
 impl State {
@@ -109,11 +117,27 @@ impl State {
 			Message::TabUpdate(tab_message) => {
 				self.process_tabmsg(tab_message)
 			},
-			// Handle button events
+			// Locally triggered events
 			Message::ToggleSim(toggle) => {
 				self.top_bar.toggle_sim = toggle;
 				None
 			}
+			Message::ActionBoxUpdate(string) => {
+				self.top_bar.action_box_text = string;
+				None
+			}
+			Message::ActionBoxSubmit => {
+				match ron::from_str(&self.top_bar.action_box_text) {
+					Ok(action) => {
+						self.net_action(action);
+						self.top_bar.action_box_text.clear();
+					}
+					Err(err) => log::error!("Failed to parse Internet Action: {}", err)
+				}
+				None
+			}
+
+			// Externally triggered events
 			Message::TriggerSave => {
 				self.net_action(InternetAction::SaveInternet("./target/internet.bin".to_owned())); None
 			}
@@ -129,12 +153,18 @@ impl State {
 			Message::ConnectNode(from, to) => {
 				self.net_action(InternetAction::ConnectNodes(from, to)); None
 			}
+			Message::DitherCommand(node_idx, command) => {
+				self.net_action(InternetAction::DitherCommand(node_idx, command)); None
+			}
 			Message::AddNode(position, node_type) => {
 				match node_type {
 					NodeType::Machine => self.net_action(InternetAction::AddMachine(position)),
 					NodeType::Network => self.net_action(InternetAction::AddNetwork(position)),
 				}
 				None
+			},
+			Message::DisplayError(string) => {
+				log::error!("Tab Error: {}", string); None
 			},
 			_ => { log::warn!("received unimplemented loaded::Message: {:?}", message); None }
 		}
@@ -159,7 +189,12 @@ impl State {
 				).push(
 					Text::new(format!("({}, {})", self.tabs.network_tab.map.translation.x, self.tabs.network_tab.map.translation.y))
 				) */
-			) */.push(
+			) */
+			.push(
+				TextInput::new(&mut self.top_bar.action_box_state, "DebugPrint", &self.top_bar.action_box_text, Message::ActionBoxUpdate)
+				.on_submit(Message::ActionBoxSubmit)
+			)
+			.push(
 				Container::new(
 					self.tabs.view().map(move |m| Message::TabUpdate(m))
 				)

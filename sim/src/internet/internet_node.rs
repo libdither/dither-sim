@@ -72,7 +72,7 @@ impl InternetMachine {
 			let (machine_internal_plug, netsim_machine_plug) = netsim_embed::wire();
 
 			let (machine, mut device_event_receiver)
-			 = Machine::new(MachineId(self.id.as_usize()), netsim_machine_plug, async_process::Command::new(self.executable.clone())).await;
+			 = Machine::new(MachineId(self.id.as_ffi()), netsim_machine_plug, async_process::Command::new(self.executable.clone())).await;
 
 			let machine_id = self.id;
 			let event_join_handle = task::spawn(async move {
@@ -109,11 +109,13 @@ impl InternetMachine {
 			runtime.internal_wire_handle.set_delay(Duration::from_millis(self.internal_latency)).await;
 		}
 	}
-
-	pub fn request_machine_info(&self) -> Result<(), MachineError> {
+	pub fn device_command(&self, command: DeviceCommand) -> Result<(), MachineError> {
 		if let Some(runtime) = &self.runtime {
-			runtime.machine.tx.unbounded_send(DeviceCommand::DitherCommand(DitherCommand::GetNodeInfo)).map_err(|_|MachineError::DeviceCommandSenderClosed)
+			runtime.machine.tx.unbounded_send(command).map_err(|_|MachineError::DeviceCommandSenderClosed)
 		} else { Err(MachineError::NoRuntime) }
+	}
+	pub fn request_machine_info(&self) -> Result<(), MachineError> {
+		self.device_command(DeviceCommand::DitherCommand(DitherCommand::GetNodeInfo))
 	}
 
 	pub async fn connect(&mut self, wire_idx: WireIdx, node_idx: NodeIdx, ip_addr: Ipv4Addr) -> Result<Plug, MachineError> {
@@ -127,6 +129,9 @@ impl InternetMachine {
 	/// Returns the wire connection
 	pub fn connection(&mut self) -> Option<WireIdx> {
 		if let Some((wire_idx, _, _)) = self.connection { Some(wire_idx) } else { None }
+	}
+	pub fn connection_ip(&self) -> Option<Ipv4Addr> {
+		self.connection.map(|(_,_,ip)|ip)
 	}
 	pub fn disconnect(&mut self) -> Result<(), MachineError> {
 		if self.connection.is_some() { self.connection = None; Ok(()) }
@@ -150,6 +155,7 @@ pub struct MachineInfo {
 	pub node_id: NodeID,
 	pub remotes: usize,
 	pub active_remotes: usize,
+	pub network_ip: Option<Ipv4Addr>,
 }
 
 #[derive(Derivative, Serialize, Deserialize)]
@@ -197,7 +203,7 @@ impl InternetNetwork {
 		let router = Ipv4Router::new(self.range.gateway_addr());
 		let temp_plugs = self.connections.iter().map(|(wire_idx, (node_idx, routes))|{
 			let (router_plug, outgoing_plug) = netsim_embed::wire();
-			router.add_connection(node_idx.as_usize(), router_plug, routes.clone());
+			router.add_connection(node_idx.as_ffi(), router_plug, routes.clone());
 			(wire_idx, outgoing_plug)
 		}).collect();
 		self.runtime = Some(NetworkRuntime { router, temp_plugs });
@@ -225,12 +231,12 @@ impl InternetNetwork {
 	pub fn connect(&mut self, wire_idx: WireIdx, node_id: NodeIdx, routes: Vec<Ipv4Route>) -> Result<Plug, NetworkError> {
 		let (router_plug, outgoing_plug) = netsim_embed::wire();
 		self.connections.insert(wire_idx, (node_id, routes.clone()));
-		self.runtime()?.router.add_connection(node_id.as_usize(), router_plug, routes); Ok(outgoing_plug)
+		self.runtime()?.router.add_connection(node_id.as_ffi(), router_plug, routes); Ok(outgoing_plug)
 	}
 	pub fn disconnect(&mut self, idx: WireIdx) -> Result<(), NetworkError> {
 		let (node_id, _) = self.connections[idx];
 		self.connections.remove(idx);
-		task::block_on(self.runtime()?.router.remove_connection(node_id.as_usize())); Ok(())
+		task::block_on(self.runtime()?.router.remove_connection(node_id.as_ffi())); Ok(())
 	}
 }
 

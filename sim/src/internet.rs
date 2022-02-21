@@ -19,7 +19,7 @@ use futures::channel::mpsc;
 
 use netsim_embed::Ipv4RangeIter;
 
-use device::{DeviceCommand, DeviceEvent, DitherEvent};
+use device::{Address, DeviceCommand, DeviceEvent, DitherCommand, DitherEvent};
 pub use node::{self, RouteCoord, NodeID, net};
 
 mod netsim_ext;
@@ -45,6 +45,7 @@ pub enum InternetAction {
 	SaveInternet(String),
 	/// Request all info
 	RequestAllNodes,
+	ConnectAllMachines(NodeIdx), // Send connection requests from all machines to given NodeIdx to organize network
 	/// Add Machine at a specific position in simulation space
 	AddMachine(FieldPosition),
 	/// Add Network at a specific position in simulation space
@@ -64,8 +65,12 @@ pub enum InternetAction {
 	/// Connect two nodes
 	ConnectNodes(NodeIdx, NodeIdx),
 
-	/// Send Device command (Dither-specific or otherwise) -> NodeInfo & MachineInfo
+	/// Send Device command (Dither-specific or otherwise)
 	DeviceCommand(NodeIdx, DeviceCommand),
+	/// Send DitherCommand to device
+	DitherCommand(NodeIdx, DitherCommand),
+	/// Fetch global ip from network configuration and pass it to the device so that there is at least one node that can be bootstrapped off of.
+	TellIp(NodeIdx),
 
 	// From Devices
 	HandleDeviceEvent(NodeIdx, DeviceEvent),
@@ -131,11 +136,13 @@ pub enum InternetError {
 
 new_key_type! { pub struct NodeIdx; }
 impl fmt::Display for NodeIdx { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{:?}", self) } }
-impl NodeIdx { pub fn as_usize(&self) -> usize { self.0.as_ffi() as usize } }
+impl NodeIdx {
+	pub fn as_ffi(&self) -> usize { self.0.as_ffi() as usize }
+}
 
 new_key_type! { pub struct WireIdx; }
 impl fmt::Display for WireIdx { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{:?}", self) } }
-impl WireIdx { pub fn as_usize(&self) -> usize { self.0.as_ffi() as usize } }
+impl WireIdx { pub fn as_ffi(&self) -> usize { self.0.as_ffi() as usize } }
 
 /// Internet object, contains handles to the network and machine threads
 #[derive(Serialize, Deserialize, Debug)]
@@ -283,6 +290,9 @@ impl Internet {
 							runtime.send_event(InternetEvent::ConnectionInfo(wire_idx, node1, node2))?;
 						}
 					}
+					/* InternetAction::ConnectAllMachines(node_idx) => {
+						self.machine(node_idx)?.
+					} */
 					InternetAction::AddNetwork(position) => {
 						let idx = self.spawn_network(runtime, position)?;
 						runtime.send_event(InternetEvent::NewNetwork(idx))?;
@@ -323,14 +333,27 @@ impl Internet {
 					InternetAction::HandleDeviceEvent(index, DeviceEvent::DitherEvent(dither_event)) => {
 						match dither_event {
 							DitherEvent::NodeInfo(device::NodeInfo { route_coord, node_id, public_addr, remotes, active_remotes } ) => {
-								//let machine = self.machine(index)?;
+								let network_ip = self.machine(index)?.connection_ip();
 								runtime.send_event(InternetEvent::MachineInfo(index, MachineInfo {
-									route_coord, public_addr, node_id, remotes, active_remotes
+									route_coord, public_addr, node_id, remotes, active_remotes, network_ip,
 								}))?;
 							}
 							//_ => log::error!("Unhandled Device Event")
 						}
 					}
+					InternetAction::DeviceCommand(node_idx, command) => {
+						self.machine(node_idx)?.device_command(command)?;
+					}
+					InternetAction::DitherCommand(node_idx, command) => {
+						self.machine(node_idx)?.device_command(DeviceCommand::DitherCommand(command))?;
+					}
+					/* InternetAction::TellIp(node_idx) => {
+						let machine = self.machine(node_idx)?;
+						if let Some(ip) = machine.connection_ip() {
+							machine.device_command(DeviceCommand::DitherCommand(DitherCommand::SetPublicIp(ip)))?;
+						} else { log::error!("Cannot tell {:?} its own ip as it is not connected to any network", node_idx); }
+
+					} */
 					InternetAction::DebugPrint => {
 						log::debug!("Internet State: {:#?}", &self);
 					}

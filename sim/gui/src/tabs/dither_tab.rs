@@ -1,8 +1,10 @@
 use std::net::Ipv4Addr;
 
 use super::{Icon, Tab};
+use anyhow::Context;
 use iced::{Align, Button, Color, Column, Container, Element, Length, Point, Row, Text, Vector, button, canvas::{self, Path, Stroke, event}, keyboard};
 use iced_aw::TabLabel;
+use libdither::{DitherCommand, Multiaddr};
 use petgraph::Undirected;
 use sim::{FieldPosition, MachineInfo, NodeID, NodeIdx, NodeType, RouteCoord, WireIdx, node::net::Address};
 
@@ -12,16 +14,18 @@ use crate::{gui::loaded, network_map::{self, NetworkEdge, NetworkMap, NetworkNod
 pub struct DitherTabNode {
 	id: NodeIdx,
 	node_id: NodeID,
-	route_coord: Option<RouteCoord>,
-	ip_addr: Option<Address>,
+	route_coord: RouteCoord,
+	known_self_addr: Option<Address>,
+	network_ip: Option<Ipv4Addr>,
 }
 impl DitherTabNode {
-	fn new(id: NodeIdx, info: MachineInfo) -> DitherTabNode {
+	fn new(id: NodeIdx, info: MachineInfo, index: usize) -> DitherTabNode {
 		Self {
 			id,
 			node_id: info.node_id,
-			route_coord: info.route_coord,
-			ip_addr: info.public_addr,
+			route_coord: info.route_coord.unwrap_or((index as i64 * 60, 0)),
+			known_self_addr: info.public_addr,
+			network_ip: info.network_ip,
 		}
 	}
 }
@@ -32,12 +36,16 @@ impl NetworkNode for DitherTabNode {
 	position = λ(self) {
 		> self.route_coord map { Vector::new (f32 x) (f32 y) } unwrap_default
 	}
+	position = λ(self) > self.route_coord map { Vector::new (f32 x) (f32 y) } unwrap_default
 	*/
 	fn position(&self) -> Vector {
-		self.route_coord.map(|(x,y)|Vector::new(x as f32, y as f32)).unwrap_or_default()
+		Vector::new(self.route_coord.0 as f32, self.route_coord.1 as f32)
 	}
 	fn render(&self, frame: &mut canvas::Frame, hover: bool, selected: bool, scaling: f32) {
-		let point = Point::ORIGIN + self.position();
+		let point = {
+			let position = self.position();
+			Point::new(position.x, position.y)
+		};
 		let radius = 30.0;
 		
 		if selected {
@@ -111,72 +119,83 @@ impl DitherTab {
 	}
 
 	pub fn process(&mut self, message: Message) -> Option<loaded::Message> {
-		match message {
-			// This tab only pays attention to MachineUpdates propagated from network-sandboxed nodes
-			Message::UpdateMachine(id, info) => {
-				// Get node or add it if doesn't exist.
-				if let Some(node) = self.map.node_mut(id) { node } else {
-					self.map.add_node(DitherTabNode::new(id, info));
-					self.map.node_mut(id).unwrap()
-				};
-				self.map.trigger_update();
-			},
-			Message::RemoveNode(idx) => {
-				self.map.remove_node(idx);
-			},
-			
-			Message::UpdateConnection(wire_idx, from, to, activation) => {
-				self.map.add_edge(DitherTabEdge { id: wire_idx, source: from, dest: to, latency: 5 });
-			},
-			Message::RemoveConnection(wire_idx) => {
-				self.map.remove_edge(wire_idx);
-			}
-			Message::NetMapMessage(netmap_msg) => {
-				match netmap_msg {
-					network_map::Message::TriggerConnection(from, to) => {
-						return Some(loaded::Message::ConnectNode(from, to));
-					},
-					network_map::Message::CanvasEvent(canvas::Event::Keyboard(keyboard_event)) => {
-						match keyboard_event {
-							keyboard::Event::KeyReleased { key_code, modifiers } => {
-								match modifiers {
-									keyboard::Modifiers { shift: false, control: false, alt: false, logo: false } => {
-										match key_code {
-											keyboard::KeyCode::C => {
-												self.map.set_connecting();
-											}
-											keyboard::KeyCode::G => {
-												self.map.grab_node();
-											}
-											_ => {}
-										}
-									}
-									keyboard::Modifiers { shift: false, control: true, alt: false, logo: false } => {
-										match key_code {
-											keyboard::KeyCode::S => {
-												return Some(loaded::Message::TriggerSave);
-											}
-											keyboard::KeyCode::R => {
-												return Some(loaded::Message::TriggerReload);
-											}
-											keyboard::KeyCode::P => {
-												return Some(loaded::Message::DebugPrint);
-											}
-											_ => {},
-										}
-									}
-									_ => {}
-								}
-							}
-							_ => {}
-						}
-					}
-					_ => {},
+		let ret: anyhow::Result<Option<loaded::Message>> = try {
+			match message {
+				// This tab only pays attention to MachineUpdates propagated from network-sandboxed nodes
+				Message::UpdateMachine(id, info) => {
+					// Get node or add it if doesn't exist.
+					if let Some(node) = self.map.node_mut(id) { node } else {
+						self.map.add_node(DitherTabNode::new(id, info, self.map.nodes.node_count()));
+						self.map.node_mut(id).unwrap()
+					};
+					self.map.trigger_update();
+				},
+				Message::RemoveNode(idx) => {
+					self.map.remove_node(idx);
+				},
+				
+				Message::UpdateConnection(wire_idx, from, to, activation) => {
+					self.map.add_edge(DitherTabEdge { id: wire_idx, source: from, dest: to, latency: 5 });
+				},
+				Message::RemoveConnection(wire_idx) => {
+					self.map.remove_edge(wire_idx);
 				}
+				Message::NetMapMessage(netmap_msg) => {
+					match netmap_msg {
+						network_map::Message::TriggerConnection(from, to) => {
+							let node = self.map.node(to).ok_or(anyhow!("No node: {}", to))?;
+							let network_ip = node.network_ip.clone().ok_or(anyhow!("Node {:?} does not have a network ip", to))?;
+							let network_ip = format!("/ip4/{}/tcp/3000", network_ip).parse::<Multiaddr>().context("cannot parse multihash")?;
+							let network_ip = Address(network_ip.to_vec());
+							
+							log::debug!("Connecting node: {:?} to {:?}", from, node);
+							return Some(loaded::Message::DitherCommand(from, DitherCommand::Bootstrap(node.node_id.clone(), network_ip)));
+						},
+						network_map::Message::CanvasEvent(canvas::Event::Keyboard(keyboard_event)) => {
+							match keyboard_event {
+								keyboard::Event::KeyReleased { key_code, modifiers } => {
+									match modifiers {
+										keyboard::Modifiers { shift: false, control: false, alt: false, logo: false } => {
+											match key_code {
+												keyboard::KeyCode::C => {
+													self.map.set_connecting();
+												}
+												keyboard::KeyCode::G => {
+													self.map.grab_node();
+												}
+												_ => {}
+											}
+										}
+										keyboard::Modifiers { shift: false, control: true, alt: false, logo: false } => {
+											match key_code {
+												keyboard::KeyCode::S => {
+													return Some(loaded::Message::TriggerSave);
+												}
+												keyboard::KeyCode::R => {
+													return Some(loaded::Message::TriggerReload);
+												}
+												keyboard::KeyCode::P => {
+													return Some(loaded::Message::DebugPrint);
+												}
+												_ => {},
+											}
+										}
+										_ => {}
+									}
+								}
+								_ => {}
+							}
+						}
+						_ => {},
+					}
+				}
+				_ => {}
 			}
-			_ => {}
-		}
-		None
+			None
+		};
+		if let Err(err) = ret {
+			Some(loaded::Message::DisplayError(format!("{err}")))
+		} else { None }
 	}
 }
 

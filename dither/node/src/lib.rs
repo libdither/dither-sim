@@ -277,6 +277,12 @@ impl Node {
 		while let Some(action) = self.action_receiver.recv().await {
 			let node_error: Result<(), NodeError> = try {
 				match action {
+					NodeAction::Bootstrap(node_id, addr) => {
+						let remote_idx = self.remotes.insert(Remote::new(addr.clone(), Some(node_id)));
+						self.addrs.insert(addr.clone(), remote_idx);
+						// self.remotes.insert(remote_idx);
+						self.network_action.send(NetAction::Connect(addr)).await?;
+					}
 					NodeAction::NetAction(net_action) => {
 						match net_action {
 							// Handle requested connection
