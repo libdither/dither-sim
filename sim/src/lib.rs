@@ -16,6 +16,8 @@ pub use internet::*;
 /// This function must be run in a single-threaded program because it calls unshare(2)
 pub fn init() {
 	netsim_embed::unshare_user().expect("netsim: User namespaces are not enabled");
-	netsim_embed::Namespace::unshare().expect("netsim: network namespaces are not enabled");
-	netsim_embed_machine::iface::Iface::new().expect("netsim: tun adapters not supported");
+	let namespace = netsim_embed::Namespace::unshare().expect("netsim: network namespaces are not enabled");
+	let _iface = netsim_embed_machine::iface::Iface::new().expect("netsim: tun adapters not supported");
+
+	log::info!("Created network namespace {}", namespace);
 }

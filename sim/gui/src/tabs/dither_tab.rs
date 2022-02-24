@@ -23,7 +23,7 @@ impl DitherTabNode {
 		Self {
 			id,
 			node_id: info.node_id,
-			route_coord: info.route_coord.unwrap_or((index as i64 * 60, 0)),
+			route_coord: info.route_coord.unwrap_or((index as i64 * 90, 0)),
 			known_self_addr: info.public_addr,
 			network_ip: info.network_ip,
 		}
@@ -52,14 +52,15 @@ impl NetworkNode for DitherTabNode {
 			frame.fill(&Path::circle(point.clone(), radius + 5.0), Color::from_rgb8(255, 255, 0));
 		}
 
-		let mut node_color = Color::from_rgb8(0, 0, 0);
+		let mut node_color = Color::from_rgb8(150, 150, 150);
 		if hover { node_color = Color::from_rgb8(200, 200, 200); }
 		frame.fill(&Path::circle(point.clone(), radius), node_color);
 
+		let label = if let Some(addr) = self.network_ip { format!("{addr}") }
+		else { format!("{}", self.id) };
 		frame.fill_text(canvas::Text { content:
-			format!("ID: {}",
-			self.id),
-			position: point, color: Color::BLACK, size: radius * scaling,
+			label,
+			position: point, color: Color::from_rgb8(0, 0, 0), size: radius,
 			horizontal_alignment: iced::HorizontalAlignment::Center, vertical_alignment: iced::VerticalAlignment::Center,
 			..Default::default()
 		});

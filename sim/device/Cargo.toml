@@ -6,10 +6,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.44"
+anyhow = "1.0.55"
 env_logger = "0.9.0"
 libdither = { path = "../../dither" }
 log = "0.4.14"
 ron = "0.7.0"
-serde = { version = "1.0.130", features = ["derive"] }
-tokio = { version = "1.13.0", features = ["full"] }
+serde = { version = "1.0.136", features = ["derive"] }
+tokio = { version = "1.17.0", features = ["full"] }

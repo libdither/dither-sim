@@ -72,7 +72,7 @@ impl InternetMachine {
 			let (machine_internal_plug, netsim_machine_plug) = netsim_embed::wire();
 
 			let (machine, mut device_event_receiver)
-			 = Machine::new(MachineId(self.id.as_ffi()), netsim_machine_plug, async_process::Command::new(self.executable.clone())).await;
+			 = Machine::new(MachineId(self.id.as_ffi()), netsim_machine_plug, async_process::Command::new(self.executable.clone())).await.take_rx();
 
 			let machine_id = self.id;
 			let event_join_handle = task::spawn(async move {

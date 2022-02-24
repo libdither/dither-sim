@@ -12,7 +12,6 @@ mod internet;
 
 use internet::{Internet};
 
-
 fn main() {
 	// Check if necessary kernel features are available
 	netsim_embed::unshare_user().expect("netsim: User namespaces are not enabled");

@@ -36,14 +36,15 @@ impl NetworkNode for NetworkTabNode {
 			frame.fill(&Path::circle(point.clone(), radius + 5.0), Color::from_rgb8(255, 255, 0));
 		}
 
-		let node_color = match self.node_type { NodeType::Machine => Color::from_rgb8(0, 0, 255), NodeType::Network => Color::from_rgb8(255, 0, 0) };
+		let node_color = match self.node_type { NodeType::Machine => Color::from_rgb8(39, 245, 230), NodeType::Network => Color::from_rgb8(84, 245, 39) };
 		if hover { let node_color = Color::from_rgb8(200, 200, 200); }
 		frame.fill(&Path::circle(point.clone(), radius), node_color);
 
+		let label = if let Some(addr) = self.ip_addr { format!("{addr}") }
+		else { format!("{}", self.id) };
 		frame.fill_text(canvas::Text { content:
-			format!("ID: {}",
-			self.id),
-			position: point, color: Color::BLACK, size: radius * scaling,
+			label,
+			position: point, color: Color::BLACK, size: radius,
 			horizontal_alignment: iced::HorizontalAlignment::Center, vertical_alignment: iced::VerticalAlignment::Center,
 			..Default::default()
 		});

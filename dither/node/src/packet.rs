@@ -1,12 +1,17 @@
-use crate::{net, session::SessionKey};
+use std::{marker::PhantomData, pin::Pin, task::{self, Poll}};
 
+use bytecheck::CheckBytes;
+use futures::{AsyncBufRead, AsyncRead, AsyncWrite, Sink, Stream};
+use rkyv::{Archive, Serialize, Deserialize};
+
+use crate::{net::Network, session::SessionKey};
 use super::{NodeID, RouteCoord};
 
 /// Packets that are sent between nodes in this protocol.
 #[derive(Debug, Archive, Serialize, Deserialize, Clone)]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-#[archive_attr(derive(bytecheck::CheckBytes))]
-pub enum NodePacket {
+#[archive_attr(derive(CheckBytes))]
+pub enum NodePacket<Net: Network> {
 	/// Initiating Packet with unknown node
 	InitUnknown { initiating_id: NodeID },
 	/// Response to InitUnknown packet, Init packet might be sent after this
@@ -26,21 +31,25 @@ pub enum NodePacket {
 	},
 	/// Sent back if received non-encrypted, non-init packet
 	BadPacket {
-		#[omit_bounds] packet: Box<NodePacket>,
+		#[omit_bounds] packet: Box<NodePacket<Net>>,
 	},
 
-	/// All Packets that are not Init-type should be wrapped in session encryption
+	/// Packet representing encryption
 	Session {
 		session_key: SessionKey,
-		#[omit_bounds] encrypted_packet: Box<NodePacket>,
+		#[omit_bounds] encrypted_packet: Box<NodePacket<Net>>,
 	},
+	/// Traversing packet
 	Traversal {
 		/// Place to Route Packet to
 		destination: RouteCoord,
 		/// Packet to traverse to destination node
-		#[omit_bounds] session_packet: Box<NodePacket>, // Must be type Init-type, or Session
-		/// Signed & Assymetrically encrypted return location
-		origin: Option<RouteCoord>,
+		#[omit_bounds] session_packet: Box<NodePacket<Net>>, // Must be type Init or Session packet
+	},
+	/// Packet representing an origin location
+	Return {
+		#[omit_bounds] packet: Box<NodePacket<Net>>,
+		origin: RouteCoord,
 	},
 
 	/// ### Connection System
@@ -48,7 +57,7 @@ pub enum NodePacket {
 	/// Contains list of packets for remote to respond to
 	ConnectionInit {
 		ping_id: u128,
-		#[omit_bounds] initial_packets: Vec<NodePacket>,
+		#[omit_bounds] initial_packets: Vec<NodePacket<Net>>,
 	},
 
 	/// Exchange Info with another node
@@ -81,7 +90,7 @@ pub enum NodePacket {
 	RequestPings(usize, Option<RouteCoord>),
 
 	/// Tell a peer that this node wants a ping (implying a potential direct connection)
-	WantPing(NodeID, net::Address),
+	WantPing(NodeID, Net::Address),
 	/// Sent when node accepts a WantPing Request
 	/// * `NodeID`: NodeID of Node who send the request in response to a RequestPings
 	/// * `u64`: Distance to that nodeTraversedPacket
@@ -94,85 +103,60 @@ pub enum NodePacket {
 	Data(Vec<u8>),
 }
 
-
-use tokio_util::codec::{Encoder, Decoder};
-use rkyv::{Archive, Deserialize, Infallible, Serialize, ser::{Serializer, serializers::{AllocScratch, CompositeSerializer, FallbackScratch, HeapScratch, SharedSerializeMap, WriteSerializer}}};
-use bytes::{Buf, BufMut, BytesMut, buf::Writer};
-
 const MAX_PACKET_LENGTH: usize = 1024 * 1024 * 16;
 
-#[derive(Default)]
-pub struct PacketCodec {}
-pub type CodecSerializer<const N: usize> = CompositeSerializer<WriteSerializer<Writer<BytesMut>>, FallbackScratch<HeapScratch<N>, AllocScratch>, SharedSerializeMap>;
+#[derive(Error, Debug)]
+enum PacketCodecError {
+	#[error(transparent)]
+	IoError(#[from] futures::io::Error),
+}
 
-impl Encoder<NodePacket> for PacketCodec {
-	type Error = std::io::Error;
+pub struct PacketCodec<'i, 'b, Inner: AsyncRead + AsyncWrite, Packet: rkyv::Archive, const BUFSIZE: usize> {
+	inner: Pin<&'i mut Inner>,
+	deserializer: rkyv::Infallible,
+	buffer: [u8; BUFSIZE],
+	_packet: PhantomData<&'b Packet>,
+}
 
-	fn encode(&mut self, item: NodePacket, dst: &mut BytesMut) -> Result<(), Self::Error> {
-		// Serialize Object
-		
-		let write_serializer = WriteSerializer::new(dst.writer()); // Create root serializer
-		// Create compound serializer
-		let scratch = FallbackScratch::<HeapScratch<4096>, AllocScratch>::default();
-		let mut serializer = CompositeSerializer::new(write_serializer, scratch, SharedSerializeMap::default());
-		
-		serializer.pad(4).unwrap(); // Reserve space for length
-		let item_len = serializer.serialize_value(&item).unwrap(); // Serialize object
-		drop(serializer); // Drop serializer, dropping internal writer, which frees &mut BytesMut
-		
-		
-		// Don't send a string if it is longer than the other end will accept
-		if item_len > MAX_PACKET_LENGTH {
-			Err(std::io::Error::new(
-				std::io::ErrorKind::InvalidData,
-				format!("Frame of length {} is too large.", item_len)
-			))?;
-		}
-
-		// Overwrite Length Bytes
-		(&mut dst[0..4]).put_u32_le(item_len as u32);
-		Ok(())
+impl<'i, 'b, Inner: AsyncRead + AsyncWrite, Packet: rkyv::Archive, const BUFSIZE: usize> PacketCodec<'i, 'b, Inner, Packet, BUFSIZE> {
+	pub fn new(inner: Pin<&'i mut Inner>) -> Self {
+		Self { inner, buffer: [0u8; BUFSIZE], deserializer: rkyv::Infallible, _packet: Default::default() }
 	}
 }
 
-impl Decoder for PacketCodec {
-	type Item = NodePacket;
-	type Error = std::io::Error;
+impl<'i, 'b, Inner: AsyncRead + AsyncWrite, Packet: rkyv::Archive, const BUFSIZE: usize> Stream for PacketCodec<'i, 'b, Inner, Packet, BUFSIZE> {
+	type Item = &'b <Packet as Archive>::Archived;
 
-	fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+	fn poll_next(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
+		self.inner.poll_read(cx, &mut self.buffer); // Read into buffer
+		match rkyv::check_archived_root::<Packet>(&self.buffer) {
+			Ok(archive) => {
 
-		// Check if large enough to read u32.
-		if src.len() < 4 {
-			return Ok(None);
+			}
+			Err(err) => Poll::Ready(None) // Error with reading
 		}
+	}
+}
 
-		// Copy length marker from buffer, interpret as u32 and cast to usize
-		let length = src.copy_to_bytes(4).get_u32_le() as usize;
+impl<Inner: AsyncRead + AsyncWrite, Packet: rkyv::Archive, const BUFSIZE: usize> Sink<Packet> for PacketCodec<Inner, Packet, BUFSIZE> {
+	type Error = PacketCodecError;
 
-		// Check that the length is not too large to avoid a denial of
-		// service attack where the server runs out of memory.
-		if length > MAX_PACKET_LENGTH {
-			return Err(std::io::Error::new(
-				std::io::ErrorKind::InvalidData,
-				format!("Frame of length {} is too large.", length)
-			));
-		}
-		
-		// Check if full string has arrived yet
-		if src.len() < (4 + length) {
-			// Reserve space (helps with efficiency, not required)
-			src.reserve(4 + length - src.len());
+	fn poll_ready(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+		self.inner.poll_flush(cx)
+	}
 
-			// We inform the Framed that we need more bytes to form the next
-			// frame.
-			return Ok(None);
-		}
-		let bytes = &src[4..4 + length];
-		// interpret data from buffer as Archive, using validation feature to avoid unsafe code
-		//let archived = rkyv::check_archived_root::<NodePacket>().unwrap(); // This doesn't work with deserialize for some reason
-		let archived = unsafe { rkyv::archived_root::<NodePacket>(bytes) };
-		// deserialize archive into an actual value
-		let deserialized: NodePacket = archived.deserialize(&mut Infallible).unwrap();
-		Ok(Some(deserialized))
+	fn start_send(self: Pin<&mut Self>, item: Packet) -> Result<(), Self::Error> {
+		let mut serializer = rkyv::ser::serializers::AllocSerializer::<0>::default();
+		serializer.serialize_value(&item).unwrap();
+		let bytes = serializer.into_serializer().into_inner();
+		self.inner.poll_write(&bytes)
+	}
+
+	fn poll_flush(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+		self.inner.poll_flush(cx)
+	}
+
+	fn poll_close(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+		self.inner.poll_close(cx)
 	}
 }

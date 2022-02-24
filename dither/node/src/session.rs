@@ -3,20 +3,21 @@
 
 #![allow(unused)]
 
-use tokio::{sync::mpsc::{self, Sender}, task::JoinHandle};
-use tokio_util::codec::{Framed};
-use futures::{Sink, SinkExt, StreamExt};
+use std::marker::PhantomData;
 
-use crate::{net::Connection, packet::NodePacket, remote::RemoteAction};
-// use crate::rkyv_codec::RkyvCodec;
+use async_std::task::{self, JoinHandle};
+use tokio_util::codec::{Framed};
+use futures::{Sink, SinkExt, StreamExt, channel::mpsc::{self, Sender}};
+
+use crate::{net::Network, packet::NodePacket, remote::RemoteAction};
 use crate::packet::PacketCodec;
 
 pub type SessionKey = u128;
 
 #[derive(Debug)]
-pub enum SessionAction {
-	NewConnection(Connection),
-	SendPacket(NodePacket),
+pub enum SessionAction<Net: Network> {
+	NewConnection(Net::Connection),
+	SendPacket(NodePacket<Net>),
 	CloseSession,
 }
 
@@ -27,18 +28,19 @@ pub enum SessionError {
 	#[error(transparent)]
 	IoError(#[from] std::io::Error),
 	#[error("Failed to Send to Remote Thread")]
-	RemoteSendError(#[from] mpsc::error::SendError<RemoteAction>),
+	RemoteSendError(#[from] mpsc::SendError),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Session {
+pub struct Session<Net: Network> {
 	key: SessionKey,
+	_data: PhantomData<Net>,
 }
-impl Session {
+impl<Net: Network> Session<Net> {
 	pub fn new() -> Self {
-		Self { key: rand::random() }
+		Self { key: rand::random(), _data: Default::default() }
 	}
-	async fn handle_packet(&mut self, packet: NodePacket, remote_action: &Sender<RemoteAction>) -> Result<Option<NodePacket>, SessionError> {
+	async fn handle_packet(&mut self, packet: NodePacket<Net>, remote_action: &Sender<RemoteAction<Net>>) -> Result<Option<NodePacket>, SessionError> {
 		let packet = match packet {
 			NodePacket::Init { init_session_key, initiating_id, receiving_id } => {
 				None
@@ -55,16 +57,16 @@ impl Session {
 		};
 		Ok(packet)
 	}
-	pub fn start(mut self, connection: Connection, remote_action: Sender<RemoteAction>) -> (JoinHandle<Session>, Sender<SessionAction>) {
+	pub fn start(mut self, connection: Net::Connection, remote_action: Sender<RemoteAction<Net>>) -> (JoinHandle<Session<Net>>, Sender<SessionAction<Net>>) {
 		let (action_sender, mut action_receiver) = mpsc::channel::<SessionAction>(20);
-		let join_handle = tokio::spawn(async move {
+		let join_handle = task::spawn(async move {
 			// Writing Thread, Listens to action_receiver and occasionally writes to writer
 			
 			// Frame Connection Stream with Packet Codec
-			let mut packet_stream = Framed::new(connection.stream, PacketCodec {});
+			let mut packet_stream = PacketCodec::new(connection.stream);
 			loop {
 				let error: Result<(), SessionError> = try {
-					tokio::select!{
+					futures::select!{
 						// Receive Actions, Write Packets
 						action = action_receiver.recv() => {
 							if let Some(action) = action {

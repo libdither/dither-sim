@@ -1,43 +1,39 @@
 #![allow(dead_code)]
 #![feature(try_blocks)]
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, net::Ipv4Addr};
 
 pub use commands::{DitherCommand, DitherEvent};
-use futures::StreamExt;
-use libp2p::{Transport, core::transport::{ListenerEvent, upgrade}, identity, mplex, noise, tcp::TokioTcpConfig};
+use futures::{StreamExt, channel::mpsc};
 
-use tokio::{sync::mpsc};
+use async_std::{net::TcpStream};
 
+use node::net::Network;
 pub use node::{self, Node, NodeAction, net::NetAction};
-
-pub use libp2p::{Multiaddr, PeerId};
 
 pub mod commands;
 
 pub struct DitherCore {
-	keypair: identity::Keypair,
-	peer_id: PeerId,
-	stored_node: Option<Node>,
-	node_network_receiver: mpsc::Receiver<NetAction>,
-	node_action_sender: mpsc::Sender<NodeAction>,
+	stored_node: Option<Node<Self>>,
+	node_network_receiver: mpsc::Receiver<NetAction<Self>>,
+	node_action_sender: mpsc::Sender<NodeAction<Self>>,
 
 	listen_addr: Multiaddr,
 	event_sender: mpsc::Sender<DitherEvent>,
 }
+impl Network for DitherCore {
+	type Address = (Ipv4Addr, u16);
+	type Connection = TcpStream;
+}
+
 
 impl DitherCore {
 	pub fn init(listen_addr: Multiaddr) -> anyhow::Result<(DitherCore, mpsc::Receiver<DitherEvent>)> {
-		let keypair = identity::Keypair::generate_ed25519();
-		let peer_id = PeerId::from(keypair.public());
-
 		let (tx, node_network_receiver) = mpsc::channel(20);
 		let node = Node::new(peer_id.to_bytes().into(), tx);
 		let node_action_sender = node.action_sender.clone();
 		let (event_sender, dither_event_receiver) = mpsc::channel(20);
 		let core = DitherCore {
-			keypair,
-			peer_id,
 			stored_node: Some(node),
 			node_network_receiver,
 			node_action_sender,
@@ -54,22 +50,11 @@ impl DitherCore {
 		
 		println!("Local peer id: {:?}", self.peer_id);
 	
-		// Create a keypair for authenticated encryption of the transport.
-		let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-			.into_authentic(&self.keypair)
-			.expect("Signing libp2p-noise static DH keypair failed.");
-		let transport = TokioTcpConfig::new()
-			.nodelay(true)
-			.upgrade(upgrade::Version::V1)
-			.authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
-			.multiplex(mplex::MplexConfig::new())
-			.boxed();
-	
-		let mut listener = transport.clone().listen_on(self.listen_addr.clone()).expect("listener didn't open");
+		let mut listener = TcpListener::bind(self.listen_addr).await?.incoming();
 	
 		let node_network_receiver = &mut self.node_network_receiver;
 		loop {
-			tokio::select! {
+			futures::select! {
 				dither_command = dither_command_receiver.recv() => {
 					let result: anyhow::Result<()> = try {
 						match dither_command.ok_or(anyhow::anyhow!("failed to receive dither command"))? {
@@ -98,17 +83,17 @@ impl DitherCore {
 								_ => {},
 							}
 						};
-						if let Err(err) = result { println!("NetAction error: {} at {}", err, err.backtrace()) }
+						if let Err(err) = result { println!("NetAction error: {err}") }
 					} else { break; }
 				}
-				peer_event = listener.next() => { // Listen for peer events from libp2p
-					match peer_event.unwrap()? {
-						ListenerEvent::NewAddress(listen_addr) => {
-							println!("Listening on {:?}", listen_addr)
-						}
-						_ => {},
+				tcp_stream = listener.next() => { // Listen for incoming connections
+					if let Ok(Some(tcp_stream)) = tcp_stream {
+						println!("Received new connection: {:?}", tcp_stream);
+						let address = tcp_stream.local_addr();
+						self.node_action_sender(NodeAction::NetAction(NetAction::Incoming()))
 					}
 				}
+				complete => break,
 			}
 		}
 		

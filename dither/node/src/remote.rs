@@ -1,24 +1,25 @@
 //! This is the remote module, It manages actions too and from a remote node
 
-use crate::{Remote, net::{Connection}, packet::NodePacket, session};
+use crate::{Remote, net::Network, packet::NodePacket, session};
 
 use super::{NodeID, NodeAction, RouteCoord};
+use async_std::task::JoinHandle;
+use futures::channel::mpsc::{Receiver, SendError, Sender};
 use session::*;
 
-use tokio::{sync::mpsc::{Receiver, Sender, error::SendError}, task::{JoinError, JoinHandle}};
 use thiserror::Error;
 
 /// Actions received by the task managing a connection to a remote node from the main node thread.
 #[derive(Debug)]
-pub enum RemoteAction {
+pub enum RemoteAction<Net: Network> {
 	/// From Main Thread
 	/// Handle Connection passed through main node from network
-	HandleConnection(Connection),
+	HandleConnection(Net::Address, Net::Connection),
 	/// Query Route Coord from Route Coord Lookup (see NetAction)
 	RouteCoordQuery(RouteCoord),
 
 	/// From Session Thread
-	ReceivePacket(NodePacket),
+	ReceivePacket(NodePacket<Net>),
 
 	SessionError(Box<SessionError>),
 }
@@ -32,15 +33,13 @@ pub enum RemoteNodeError {
 	#[error("Session Error")]
 	SessionError(#[from] SessionError),
 	#[error("Channel Send Error")]
-	SessionChannelError(#[from] SendError<SessionAction>),
-	#[error("Session Join Error")]
-	JoinError(#[from] JoinError),
+	SessionChannelError(#[from] SendError),
 }
 
 /// Remote Node Is an Internal Structure of a Dither Node, it is managed by an independent thread when the remote is connected and sends messages back and forth with the session and the main node.
 /// The 
 #[derive(Debug)]
-pub struct RemoteNode {
+pub struct RemoteNode<Net: Network> {
 	/// The ID of the remote node, Set when the NodeID is known beforehand or an encrypted link has just been connected
 	node_id: Option<NodeID>,
 
@@ -48,12 +47,12 @@ pub struct RemoteNode {
 	route_coord: Option<RouteCoord>,
 
 	/// Current encrypted channel to remote
-	session: Option<Session>,
+	session: Option<Session<Net>>,
 
-	action_sender: Sender<RemoteAction>,
+	action_sender: Sender<RemoteAction<Net>>,
 }
-impl RemoteNode {
-	pub fn new<'a>(remote: Option<&'a Remote>, action_sender: Sender<RemoteAction>) -> RemoteNode {
+impl<Net: Network> RemoteNode<Net> {
+	pub fn new<'a>(remote: Option<&'a Remote<Net>>, action_sender: Sender<RemoteAction<Net>>) -> RemoteNode<Net> {
 		Self {
 			node_id: remote.map(|r|r.node_id.clone()).flatten(),
 			route_coord: remote.map(|r|r.route_coord.clone()).flatten(),
@@ -62,7 +61,7 @@ impl RemoteNode {
 		}
 	}
 	// Run remote action event loop. Consumes itself, should be run on independent thread
-	pub async fn run(mut self, mut action_receiver: Receiver<RemoteAction>, node_action: Sender<NodeAction>) -> Result<(), RemoteNodeError> {
+	pub async fn run(mut self, mut action_receiver: Receiver<RemoteAction<Net>>, node_action: Sender<NodeAction<Net>>) -> Result<(), RemoteNodeError> {
 		// TODO: Do return sending
 		let _node_action = node_action;
 		

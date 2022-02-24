@@ -8,31 +8,31 @@ description = "Describes Node API for Dither"
 
 [dependencies]
 # Async
-tokio = { version = "1.11.0", features = ["full"] }
-tokio-stream = "0.1.7"
-futures = "0.3.17"
+async-std = "1.10.0"
+futures = "0.3.21"
 
 # Data
 log = "0.4.14"
 derivative = "2.2.0"
-nalgebra = { version = "0.29.0", features = ["serde-serialize"] }
+nalgebra = { version = "0.30.1", features = ["serde-serialize"] }
 petgraph = { version = "0.6.0", features = ["graphmap", "serde-1"] }
 slotmap = { version = "1.0.6", features = ["serde"] }
-smallvec = { version = "1.6.1", features = ["serde"] }
-bimap = { version = "0.6.1", features = ["serde"] }
+smallvec = { version = "1.8.0", features = ["serde"] }
+bimap = { version = "0.6.2", features = ["serde"] }
 vpsearch = "2.0.1"
-thiserror = "1.0.29"
-anyhow = "1.0.43"
+thiserror = "1.0.30"
+anyhow = "1.0.55"
 
 # Packet Serialization
-rkyv = { version = "0.7.16", features = ["validation"] } # Zero-Copy Serialization
-bytecheck = "0.6.5"
-tokio-util = { version = "0.6.8", features = ["codec"] }
+rkyv = { version = "0.7.33", features = ["validation"] } # Zero-Copy Serialization
+bytecheck = "0.6.7"
+tokio-util = { version = "0.7.0", features = ["codec"] }
 bytes = "1.1.0"
 
-rand = "0.8.4"
-futures-core = "0.3.17"
-serde = { version = "1.0.130", features = ["derive"] }
+rand = "0.8.5"
+futures-core = "0.3.21"
+serde = { version = "1.0.136", features = ["derive"] }
+hashdb = { git = "https://github.com/libdither/disp" }
 
 [lib]
 name = "node"
