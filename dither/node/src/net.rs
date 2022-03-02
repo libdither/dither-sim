@@ -7,20 +7,17 @@ use rkyv::{AlignedVec, Archive, Deserialize, Infallible, Serialize, ser::seriali
 
 use crate::{NodeID, RouteCoord};
 
-pub trait Address: 
-{}
-
 /// Create Network implementation
 pub trait Network: Clone + Send + Sync + std::fmt::Debug + 'static
 {
 	/// Represents potential Connection that can be established by Network implementation
-	type Addr: Clone + PartialEq + Eq + std::hash::Hash + std::fmt::Debug + Send + Sync
+	type Address: Clone + PartialEq + Eq + std::hash::Hash + std::fmt::Debug + Send + Sync
 	+ for<'de> serde::Deserialize<'de>
 	+ serde::Serialize
 	+ for<'b> Serialize<CompositeSerializer<AlignedSerializer<&'b mut AlignedVec>, FallbackScratch<HeapScratch<256_usize>, AllocScratch>, SharedSerializeMap>>
-	+ Archive<Archived = Self::ArchivedAddr>;
+	+ Archive<Archived = Self::ArchivedAddress>;
 
-	type ArchivedAddr: Deserialize<Self::Addr, Infallible> + for<'v> CheckBytes<DefaultValidator<'v>> + Send + Sync;
+	type ArchivedAddress: Deserialize<Self::Address, Infallible> + for<'v> CheckBytes<DefaultValidator<'v>> + Send + Sync;
 	/// Bidirectional byte stream for sending and receiving NodePackets
 	type Conn: AsyncBufRead + AsyncWrite + std::fmt::Debug + Send + Sync + Clone + Unpin;
 }
@@ -40,7 +37,7 @@ pub enum ConnectionResponse<Net: Network> {
 pub struct NodeInfo<Net: Network> {
 	pub node_id: NodeID,
 	pub route_coord: Option<RouteCoord>,
-	pub public_addr: Option<Net::Addr>,
+	pub public_addr: Option<Net::Address>,
 	pub remotes: usize,
 	pub active_remotes: usize,
 }
@@ -59,11 +56,11 @@ pub enum NetAction<Net: Network> {
 	QueryRouteCoordResponse(NodeID, RouteCoord),
 
 	/// [Dither -> Network] Establish a Connection via a multiaddress (interpreted by network impl)
-	Connect(Net::Addr),
+	Connect(Net::Address),
 	/// [Network -> Dither] Reponse to connection request
-	ConnectResponse(Net::Addr, ConnectionResponse<Net>),
+	ConnectResponse(Net::Address, ConnectionResponse<Net>),
 	/// [Network -> Dither] Notify incoming connection
-	Incoming(Net::Addr, Net::Conn),
+	Incoming(Net::Address, Net::Conn),
 
 	/// [User -> Dither] Request info about Dither Node
 	GetNodeInfo,

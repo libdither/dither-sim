@@ -4,10 +4,8 @@
 use anyhow::Context;
 use anyhow::anyhow;
 use futures::join;
-use libdither::{DitherCommand, DitherCore, Multiaddr, PeerId};
-use libp2p::multihash::Multihash;
+use libdither::{DitherCommand, DitherCore, Address};
 use node::NodeID;
-use tokio::sync::mpsc;
 
 use rustyline::{error::ReadlineError, Editor};
 
@@ -15,7 +13,7 @@ use rustyline::{error::ReadlineError, Editor};
 async fn main() -> anyhow::Result<()> {
 	env_logger::init();
 	
-	let listen_addr: Multiaddr = ("/ip4/0.0.0.0/tcp/".to_owned() + &std::env::args().nth(1).unwrap()).parse().unwrap();
+	let listen_addr: (Ipv4Addr, u16) = (Ipv4Addr::new(0, 0, 0, 0), &std::env::args().nth(1).unwrap().parse().unwrap());
 	let (core, mut event_receiver) = DitherCore::init(listen_addr)?;
 	let (command_sender, command_receiver) = mpsc::channel(20);
 	

@@ -61,7 +61,7 @@ impl<Net: Network> Session<Net> {
 		};
 		Ok(packet)
 	}
-	pub fn start(mut self, address: Net::Addr, connection: Net::Conn, mut remote_action: Sender<RemoteAction<Net>>) -> (JoinHandle<Session<Net>>, Sender<SessionAction<Net>>) {
+	pub fn start(mut self, address: Net::Address, connection: Net::Conn, mut remote_action: Sender<RemoteAction<Net>>) -> (JoinHandle<Session<Net>>, Sender<SessionAction<Net>>) {
 		let (action_sender, mut action_receiver) = mpsc::channel::<SessionAction<Net>>(20);
 		let join_handle = task::spawn(async move {
 			// Writing Thread, Listens to action_receiver and occasionally writes to writer
@@ -82,15 +82,13 @@ impl<Net: Network> Session<Net> {
 						if let Some(action) = action {
 							match action {
 								SessionAction::SendPacket(packet) => {
-									log::info!("Received Packet: {:?}", packet);
+									if let Err(_) = packet_sink.send(&packet).await { log::error!("Failed to send packet") }
 								}
 								_ => { log::error!("Session Received wrong action: {:?}", action); }
 							}
 						} else {
 							log::error!("Session with peer {:?} Closed", address);
 						}
-						()
-						
 					},
 					packet = stream_future => {
 						if let Ok(packet) = packet {
@@ -99,7 +97,6 @@ impl<Net: Network> Session<Net> {
 								packet_sink.send(&packet).await;
 							}
 						} else { log::error!("Packet Stream with {:?} closed", address); }
-						()
 					},
 				}
 			}

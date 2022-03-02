@@ -8,7 +8,7 @@ use super::{NodeID, RouteCoord};
 /// Packets that are sent between nodes in this protocol.
 #[derive(Debug, Archive, Serialize, Deserialize, Clone)]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-#[archive_attr(derive(CheckBytes))]
+#[archive_attr(derive(CheckBytes), check_bytes(bound = "__C: rkyv::validation::ArchiveContext, <__C as rkyv::Fallible>::Error: bytecheck::Error"))]
 pub enum NodePacket<Net: Network> {
 	/// Initiating Packet with unknown node
 	InitUnknown { initiating_id: NodeID },
@@ -29,24 +29,24 @@ pub enum NodePacket<Net: Network> {
 	},
 	/// Sent back if received non-encrypted, non-init packet
 	BadPacket {
-		#[omit_bounds] packet: Box<NodePacket<Net>>,
+		#[omit_bounds] #[archive_attr(omit_bounds)] packet: Box<NodePacket<Net>>,
 	},
 
 	/// Packet representing encryption
 	Session {
 		session_key: SessionKey,
-		#[omit_bounds] encrypted_packet: Box<NodePacket<Net>>,
+		#[omit_bounds] #[archive_attr(omit_bounds)] encrypted_packet: Box<NodePacket<Net>>,
 	},
 	/// Traversing packet
 	Traversal {
 		/// Place to Route Packet to
 		destination: RouteCoord,
 		/// Packet to traverse to destination node
-		#[omit_bounds] session_packet: Box<NodePacket<Net>>, // Must be type Init or Session packet
+		#[omit_bounds] #[archive_attr(omit_bounds)] session_packet: Box<NodePacket<Net>>, // Must be type Init or Session packet
 	},
 	/// Packet representing an origin location
 	Return {
-		#[omit_bounds] packet: Box<NodePacket<Net>>,
+		#[omit_bounds] #[archive_attr(omit_bounds)] packet: Box<NodePacket<Net>>,
 		origin: RouteCoord,
 	},
 
@@ -55,7 +55,7 @@ pub enum NodePacket<Net: Network> {
 	/// Contains list of packets for remote to respond to
 	ConnectionInit {
 		ping_id: u128,
-		#[omit_bounds] initial_packets: Vec<NodePacket<Net>>,
+		#[omit_bounds] #[archive_attr(omit_bounds)] initial_packets: Vec<NodePacket<Net>>,
 	},
 
 	/// Exchange Info with another node
@@ -88,7 +88,7 @@ pub enum NodePacket<Net: Network> {
 	RequestPings(usize, Option<RouteCoord>),
 
 	/// Tell a peer that this node wants a ping (implying a potential direct connection)
-	WantPing(NodeID, Net::Addr),
+	WantPing(NodeID, Net::Address),
 	/// Sent when node accepts a WantPing Request
 	/// * `NodeID`: NodeID of Node who send the request in response to a RequestPings
 	/// * `u64`: Distance to that nodeTraversedPacket
@@ -101,7 +101,7 @@ pub enum NodePacket<Net: Network> {
 	Data(Vec<u8>),
 }
 impl<Net: Network> NodePacket<Net> 
-where <Net::Addr as Archive>::Archived: Deserialize<Net::Addr, Infallible>
+where <Net::Address as Archive>::Archived: Deserialize<Net::Address, Infallible>
 {
 	pub fn from_archive(archive: &Archived<NodePacket<Net>>) -> Self
 	{

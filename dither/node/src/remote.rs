@@ -14,7 +14,7 @@ use thiserror::Error;
 pub enum RemoteAction<Net: Network> {
 	/// From Main Thread
 	/// Handle Connection passed through main node from network
-	HandleConnection(Net::Addr, Net::Conn),
+	HandleConnection(Net::Address, Net::Conn),
 	/// Query Route Coord from Route Coord Lookup (see NetAction)
 	RouteCoordQuery(RouteCoord),
 

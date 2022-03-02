@@ -52,7 +52,7 @@ pub type RouteCoord = (i64, i64);
 pub struct Remote<Net: Network> {
 	pub node_id: Option<NodeID>,
 
-	pub address: Net::Addr,
+	pub address: Net::Address,
 
 	pub route_coord: Option<RouteCoord>,
 
@@ -64,7 +64,7 @@ pub struct Remote<Net: Network> {
 }
 
 impl<Net: Network> Remote<Net> {
-	pub fn new(address: Net::Addr, node_id: Option<NodeID>) -> Self {
+	pub fn new(address: Net::Address, node_id: Option<NodeID>) -> Self {
 		Self {
 			node_id,
 			address,
@@ -96,10 +96,10 @@ impl<Net: Network> Remote<Net> {
 #[derive(Debug)]
 pub enum NodeAction<Net: Network> {
 	/// Bootstrap this node onto a specific other network node, starts the self-organization process
-	Bootstrap(NodeID, Net::Addr),
+	Bootstrap(NodeID, Net::Address),
 
 	/// Connect to network through passed sim::Connection
-	/// Initiate Handshake with remote NodeID, net::Address and initial packets
+	/// Initiate Handshake with remote NodeID, net::Addressess and initial packets
 	//Connect(net::Connection, NodeID, SessionType, Vec<NodePacket>),
 
 	/// Handle Incoming action (from Internet)
@@ -145,7 +145,7 @@ pub enum NodeError<Net: Network> {
 	#[error("Unknown NodeID: {node_id:?}")]
 	UnknownNodeID { node_id: NodeID },
 	#[error("Unknown Network Addr: {net_addr:?}")]
-	UnknownNetAddr { net_addr: Net::Addr },
+	UnknownNetAddr { net_addr: Net::Address },
 
 	#[error("There is no calculated route coordinate for this node")]
 	NoCalculatedRouteCoord,
@@ -170,7 +170,7 @@ pub struct Node<Net: Network> {
 	pub node_id: NodeID,
 
 	/// Represents what this node is identified as on the network implementation. In real life, there would be multiple of these but for testing purposes there will just be one.
-	pub net_addr: Option<Net::Addr>,
+	pub net_addr: Option<Net::Address>,
 
 	/// This node's Distance-Based Routing Coordinates
 	pub route_coord: Option<RouteCoord>,
@@ -193,7 +193,7 @@ pub struct Node<Net: Network> {
 
 	/// Map Addresses to Remote Node Idicies
 	//#[serde(skip)]
-	addrs: HashMap<Net::Addr, RemoteIdx>,
+	addrs: HashMap<Net::Address, RemoteIdx>,
 
 	/// Sorted list of nodes based on how close they are latency-wise
 	direct_sorted: BTreeMap<u64, RemoteIdx>, // All nodes that have been tested, sorted by lowest value
@@ -221,6 +221,10 @@ pub struct Node<Net: Network> {
 }
 
 impl<Net: Network> Node<Net> {
+	pub fn gen_id() -> NodeID {
+		let random: [u8; 10] = rand::random();
+		hashdb::Hash::hash(&random[..])
+	}
 	/// Create New Node with specific ID
 	pub fn new(node_id: NodeID, network_event_sender: Sender<NetAction<Net>>) -> Node<Net> {
 		let (action_sender, action_receiver) = mpsc::channel(20);
@@ -243,7 +247,7 @@ impl<Net: Network> Node<Net> {
 	}
 
 	/// Add action to Node object
-	pub fn with_action(self, action: NodeAction<Net>) -> Self {
+	pub fn with_action(mut self, action: NodeAction<Net>) -> Self {
 		self.action_sender.try_send(action).unwrap();
 		self
 	}
@@ -266,7 +270,7 @@ impl<Net: Network> Node<Net> {
 				node_id: node_id.clone(),
 			})
 	}
-	pub fn index_by_addr(&self, net_addr: &Net::Addr) -> Result<RemoteIdx, NodeError<Net>> {
+	pub fn index_by_addr(&self, net_addr: &Net::Address) -> Result<RemoteIdx, NodeError<Net>> {
 		self.addrs
     		.get(net_addr)
 			.cloned()
@@ -332,7 +336,7 @@ impl<Net: Network> Node<Net> {
 	}
 
 	/// Handle Connection object by creating a new Remote object if it doesn't already exist 
-	pub async fn handle_connection(&mut self, address: Net::Addr, connection: Net::Conn) -> Result<(), NodeError<Net>> {
+	pub async fn handle_connection(&mut self, address: Net::Address, connection: Net::Conn) -> Result<(), NodeError<Net>> {
 		let remote = if self.addrs.contains_key(&address) {
 			*self.addrs.get(&address).unwrap()
 		} else {

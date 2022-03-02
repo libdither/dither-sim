@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 #![feature(try_blocks)]
 
-use std::{convert::TryFrom, net::Ipv4Addr};
+use std::net::Ipv4Addr;
 
 pub use commands::{DitherCommand, DitherEvent};
 use futures::{StreamExt, channel::mpsc};
 
-use async_std::{net::TcpStream};
+use async_std::{net::{TcpListener, TcpStream}};
 
 use node::net::Network;
 pub use node::{self, Node, NodeAction, net::NetAction};
@@ -18,19 +18,23 @@ pub struct DitherCore {
 	node_network_receiver: mpsc::Receiver<NetAction<Self>>,
 	node_action_sender: mpsc::Sender<NodeAction<Self>>,
 
-	listen_addr: Multiaddr,
+	listen_addr: Address,
 	event_sender: mpsc::Sender<DitherEvent>,
 }
-impl Network for DitherCore {
+
+pub struct DitherNet;
+impl Network for DitherNet {
 	type Address = (Ipv4Addr, u16);
-	type Connection = TcpStream;
+	type Conn = TcpStream;
 }
+
+type Address = <DitherNet as Network>::Address;
 
 
 impl DitherCore {
-	pub fn init(listen_addr: Multiaddr) -> anyhow::Result<(DitherCore, mpsc::Receiver<DitherEvent>)> {
+	pub fn init(listen_addr: Address) -> anyhow::Result<(DitherCore, mpsc::Receiver<DitherEvent>)> {
 		let (tx, node_network_receiver) = mpsc::channel(20);
-		let node = Node::new(peer_id.to_bytes().into(), tx);
+		let node = Node::new(Node::get_id(), tx);
 		let node_action_sender = node.action_sender.clone();
 		let (event_sender, dither_event_receiver) = mpsc::channel(20);
 		let core = DitherCore {
@@ -72,9 +76,8 @@ impl DitherCore {
 									println!("Received Connection from: {:?}", connection);
 								}
 								NetAction::Connect(addr) => {
-									let multiaddr = Multiaddr::try_from(addr.0)?;
-									println!("Dialing: {}", multiaddr);
-									let (peer, _stream) = transport.clone().dial(multiaddr)?.await?;
+									let socket = TcpStream::connect(addr).await?;
+									self.node_action_sender.send(NodeAction::NetAction(NetAction::ConnectionResponse(addr, socket)))
 									println!("Established connection with: {:?}", peer);
 								}
 								NetAction::NodeInfo(node_info) => {
