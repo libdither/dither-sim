@@ -4,7 +4,7 @@ use crate::{Remote, net::Network, packet::NodePacket, session};
 
 use super::{NodeID, NodeAction, RouteCoord};
 use async_std::task::JoinHandle;
-use futures::channel::mpsc::{Receiver, SendError, Sender};
+use futures::{SinkExt, StreamExt, channel::mpsc::{Receiver, SendError, Sender}};
 use session::*;
 
 use thiserror::Error;
@@ -14,7 +14,7 @@ use thiserror::Error;
 pub enum RemoteAction<Net: Network> {
 	/// From Main Thread
 	/// Handle Connection passed through main node from network
-	HandleConnection(Net::Address, Net::Connection),
+	HandleConnection(Net::Addr, Net::Conn),
 	/// Query Route Coord from Route Coord Lookup (see NetAction)
 	RouteCoordQuery(RouteCoord),
 
@@ -65,18 +65,18 @@ impl<Net: Network> RemoteNode<Net> {
 		// TODO: Do return sending
 		let _node_action = node_action;
 		
-		let (mut session_join_handle, mut session_action) = (None::<JoinHandle<Session>>, None::<Sender<SessionAction>>);
-		while let Some(action) = action_receiver.recv().await {
+		let (mut session_join_handle, mut session_action) = (None::<JoinHandle<Session<Net>>>, None::<Sender<SessionAction<Net>>>);
+		while let Some(action) = action_receiver.next().await {
 			match action {
-				RemoteAction::HandleConnection(connection) => {
+				RemoteAction::HandleConnection(address, connection) => {
 					(session_join_handle, session_action) = match session_action.clone() {
-						Some(session_action) => {
+						Some(mut session_action) => {
 							session_action.send(SessionAction::NewConnection(connection)).await?;
 							(session_join_handle, Some(session_action))
 						},
 						None => {
 							let session = self.session.take().unwrap_or(Session::new());
-							Some(session.start(connection, self.action_sender.clone())).unzip()
+							Some(session.start(address, connection, self.action_sender.clone())).unzip()
 						},
 					}
 				},
@@ -90,7 +90,7 @@ impl<Net: Network> RemoteNode<Net> {
 		}
 		// Wait for Session to end
 		if let Some(join_handle) = session_join_handle {
-			self.session = Some(join_handle.await.unwrap());
+			self.session = Some(join_handle.await);
 		}
 		Ok(())
 	}

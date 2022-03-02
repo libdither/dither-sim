@@ -1,23 +1,35 @@
+use bytecheck::CheckBytes;
 use futures::{AsyncBufRead, AsyncWrite};
+use rkyv::{AlignedVec, Archive, Deserialize, Infallible, Serialize, ser::serializers::{AlignedSerializer, AllocScratch, CompositeSerializer, FallbackScratch, HeapScratch, SharedSerializeMap}, validation::validators::DefaultValidator};
 /// Defines all the generic components of a node interacting with an internet structure.
 /// A Node should be able to work in any kind of network. simulated or not. This file provides the basic structures that any network implementation will use to interact with a Node.
 //use futures::{AsyncBufRead, AsyncWrite};
 
 use crate::{NodeID, RouteCoord};
 
+pub trait Address: 
+{}
+
 /// Create Network implementation
-pub trait Network {
+pub trait Network: Clone + Send + Sync + std::fmt::Debug + 'static
+{
 	/// Represents potential Connection that can be established by Network implementation
-	type Address: Clone + PartialEq + Eq + std::hash::Hash + std::fmt::Debug;
+	type Addr: Clone + PartialEq + Eq + std::hash::Hash + std::fmt::Debug + Send + Sync
+	+ for<'de> serde::Deserialize<'de>
+	+ serde::Serialize
+	+ for<'b> Serialize<CompositeSerializer<AlignedSerializer<&'b mut AlignedVec>, FallbackScratch<HeapScratch<256_usize>, AllocScratch>, SharedSerializeMap>>
+	+ Archive<Archived = Self::ArchivedAddr>;
+
+	type ArchivedAddr: Deserialize<Self::Addr, Infallible> + for<'v> CheckBytes<DefaultValidator<'v>> + Send + Sync;
 	/// Bidirectional byte stream for sending and receiving NodePackets
-	type Connection: AsyncBufRead + AsyncWrite + std::fmt::Debug;
+	type Conn: AsyncBufRead + AsyncWrite + std::fmt::Debug + Send + Sync + Clone + Unpin;
 }
 
 /// Response Object sent wrapped in a NetAction when a connection is requested
 #[derive(Debug)]
 pub enum ConnectionResponse<Net: Network> {
 	/// Established Connection
-	Established(Net::Connection),
+	Established(Net::Conn),
 	/// Remote could not be located
 	NotFound,
 	/// Remote exists, but there was an error in establishing the connection. 
@@ -28,8 +40,7 @@ pub enum ConnectionResponse<Net: Network> {
 pub struct NodeInfo<Net: Network> {
 	pub node_id: NodeID,
 	pub route_coord: Option<RouteCoord>,
-	#[serde(bound(serialize = "Net::Address: serde::Serialize", deserialize = "Net::Address: serde::Deserialize<'de>"))]
-	pub public_addr: Option<Net::Address>,
+	pub public_addr: Option<Net::Addr>,
 	pub remotes: usize,
 	pub active_remotes: usize,
 }
@@ -48,11 +59,11 @@ pub enum NetAction<Net: Network> {
 	QueryRouteCoordResponse(NodeID, RouteCoord),
 
 	/// [Dither -> Network] Establish a Connection via a multiaddress (interpreted by network impl)
-	Connect(Net::Address),
+	Connect(Net::Addr),
 	/// [Network -> Dither] Reponse to connection request
-	ConnectResponse(Net::Address, ConnectionResponse<Net>),
+	ConnectResponse(Net::Addr, ConnectionResponse<Net>),
 	/// [Network -> Dither] Notify incoming connection
-	Incoming(Net::Address, Net::Connection),
+	Incoming(Net::Addr, Net::Conn),
 
 	/// [User -> Dither] Request info about Dither Node
 	GetNodeInfo,

@@ -1,12 +1,10 @@
-use std::{marker::PhantomData, pin::Pin, task::{self, Poll}};
+
 
 use bytecheck::CheckBytes;
-use futures::{AsyncBufRead, AsyncRead, AsyncWrite, Sink, Stream};
-use rkyv::{Archive, Serialize, Deserialize};
+use rkyv::{Archive, Archived, Deserialize, Infallible, Serialize};
 
 use crate::{net::Network, session::SessionKey};
 use super::{NodeID, RouteCoord};
-
 /// Packets that are sent between nodes in this protocol.
 #[derive(Debug, Archive, Serialize, Deserialize, Clone)]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
@@ -90,7 +88,7 @@ pub enum NodePacket<Net: Network> {
 	RequestPings(usize, Option<RouteCoord>),
 
 	/// Tell a peer that this node wants a ping (implying a potential direct connection)
-	WantPing(NodeID, Net::Address),
+	WantPing(NodeID, Net::Addr),
 	/// Sent when node accepts a WantPing Request
 	/// * `NodeID`: NodeID of Node who send the request in response to a RequestPings
 	/// * `u64`: Distance to that nodeTraversedPacket
@@ -102,61 +100,11 @@ pub enum NodePacket<Net: Network> {
 	/// Raw Data Packet
 	Data(Vec<u8>),
 }
-
-const MAX_PACKET_LENGTH: usize = 1024 * 1024 * 16;
-
-#[derive(Error, Debug)]
-enum PacketCodecError {
-	#[error(transparent)]
-	IoError(#[from] futures::io::Error),
-}
-
-pub struct PacketCodec<'i, 'b, Inner: AsyncRead + AsyncWrite, Packet: rkyv::Archive, const BUFSIZE: usize> {
-	inner: Pin<&'i mut Inner>,
-	deserializer: rkyv::Infallible,
-	buffer: [u8; BUFSIZE],
-	_packet: PhantomData<&'b Packet>,
-}
-
-impl<'i, 'b, Inner: AsyncRead + AsyncWrite, Packet: rkyv::Archive, const BUFSIZE: usize> PacketCodec<'i, 'b, Inner, Packet, BUFSIZE> {
-	pub fn new(inner: Pin<&'i mut Inner>) -> Self {
-		Self { inner, buffer: [0u8; BUFSIZE], deserializer: rkyv::Infallible, _packet: Default::default() }
-	}
-}
-
-impl<'i, 'b, Inner: AsyncRead + AsyncWrite, Packet: rkyv::Archive, const BUFSIZE: usize> Stream for PacketCodec<'i, 'b, Inner, Packet, BUFSIZE> {
-	type Item = &'b <Packet as Archive>::Archived;
-
-	fn poll_next(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
-		self.inner.poll_read(cx, &mut self.buffer); // Read into buffer
-		match rkyv::check_archived_root::<Packet>(&self.buffer) {
-			Ok(archive) => {
-
-			}
-			Err(err) => Poll::Ready(None) // Error with reading
-		}
-	}
-}
-
-impl<Inner: AsyncRead + AsyncWrite, Packet: rkyv::Archive, const BUFSIZE: usize> Sink<Packet> for PacketCodec<Inner, Packet, BUFSIZE> {
-	type Error = PacketCodecError;
-
-	fn poll_ready(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-		self.inner.poll_flush(cx)
-	}
-
-	fn start_send(self: Pin<&mut Self>, item: Packet) -> Result<(), Self::Error> {
-		let mut serializer = rkyv::ser::serializers::AllocSerializer::<0>::default();
-		serializer.serialize_value(&item).unwrap();
-		let bytes = serializer.into_serializer().into_inner();
-		self.inner.poll_write(&bytes)
-	}
-
-	fn poll_flush(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-		self.inner.poll_flush(cx)
-	}
-
-	fn poll_close(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-		self.inner.poll_close(cx)
+impl<Net: Network> NodePacket<Net> 
+where <Net::Addr as Archive>::Archived: Deserialize<Net::Addr, Infallible>
+{
+	pub fn from_archive(archive: &Archived<NodePacket<Net>>) -> Self
+	{
+		Deserialize::<NodePacket<Net>, Infallible>::deserialize(archive, &mut Infallible).unwrap()
 	}
 }

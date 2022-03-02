@@ -26,13 +26,13 @@ anyhow = "1.0.55"
 # Packet Serialization
 rkyv = { version = "0.7.33", features = ["validation"] } # Zero-Copy Serialization
 bytecheck = "0.6.7"
-tokio-util = { version = "0.7.0", features = ["codec"] }
-bytes = "1.1.0"
 
 rand = "0.8.5"
 futures-core = "0.3.21"
 serde = { version = "1.0.136", features = ["derive"] }
 hashdb = { git = "https://github.com/libdither/disp" }
+unsigned-varint = "0.7.1"
+rkyv_codec = "0.2.0"
 
 [lib]
 name = "node"

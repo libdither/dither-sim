@@ -6,17 +6,17 @@
 use std::marker::PhantomData;
 
 use async_std::task::{self, JoinHandle};
-use tokio_util::codec::{Framed};
-use futures::{Sink, SinkExt, StreamExt, channel::mpsc::{self, Sender}};
+use futures::{Sink, SinkExt, StreamExt, channel::mpsc::{self, Sender}, FutureExt};
+use rkyv::{AlignedVec, Archived, Deserialize, Infallible};
+use rkyv_codec::{RkyvWriter, archive_stream, VarintLength, RkyvCodecError};
 
-use crate::{net::Network, packet::NodePacket, remote::RemoteAction};
-use crate::packet::PacketCodec;
+use crate::{net::Network, packet::{NodePacket, ArchivedNodePacket}, remote::RemoteAction};
 
 pub type SessionKey = u128;
 
 #[derive(Debug)]
 pub enum SessionAction<Net: Network> {
-	NewConnection(Net::Connection),
+	NewConnection(Net::Conn),
 	SendPacket(NodePacket<Net>),
 	CloseSession,
 }
@@ -25,10 +25,10 @@ pub enum SessionAction<Net: Network> {
 pub enum SessionError {
 	#[error("Tunnel Closed")]
 	TunnelClosed,
-	#[error(transparent)]
-	IoError(#[from] std::io::Error),
 	#[error("Failed to Send to Remote Thread")]
 	RemoteSendError(#[from] mpsc::SendError),
+	#[error("Packet Stream Error")]
+	PacketCodecError(#[from] RkyvCodecError),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -40,58 +40,68 @@ impl<Net: Network> Session<Net> {
 	pub fn new() -> Self {
 		Self { key: rand::random(), _data: Default::default() }
 	}
-	async fn handle_packet(&mut self, packet: NodePacket<Net>, remote_action: &Sender<RemoteAction<Net>>) -> Result<Option<NodePacket>, SessionError> {
+	async fn handle_packet<'b>(&mut self, packet: &'b Archived<NodePacket<Net>>, remote_action: &mut Sender<RemoteAction<Net>>) -> Result<Option<NodePacket<Net>>, SessionError> {
 		let packet = match packet {
-			NodePacket::Init { init_session_key, initiating_id, receiving_id } => {
+			ArchivedNodePacket::Init { init_session_key, initiating_id, receiving_id } => {
 				None
 			},
-			NodePacket::Session { session_key, encrypted_packet } => {
-				if session_key == self.key {
-					remote_action.send(RemoteAction::ReceivePacket(*encrypted_packet)).await?;
+			ArchivedNodePacket::Session { session_key, encrypted_packet } => {
+				if *session_key == self.key {
+					let packet = NodePacket::from_archive(encrypted_packet);
+					remote_action.send(RemoteAction::ReceivePacket(packet)).await?;
 				} else {
 					log::error!("Received Badly Encrypted Packet")
 				}
 				None
 			}
-			_ => Some(NodePacket::BadPacket { packet: Box::new(packet) }),
+			_ => {
+				let send_back: NodePacket<Net> = NodePacket::from_archive(packet);
+				Some(NodePacket::BadPacket { packet: Box::new(send_back) })
+			},
 		};
 		Ok(packet)
 	}
-	pub fn start(mut self, connection: Net::Connection, remote_action: Sender<RemoteAction<Net>>) -> (JoinHandle<Session<Net>>, Sender<SessionAction<Net>>) {
-		let (action_sender, mut action_receiver) = mpsc::channel::<SessionAction>(20);
+	pub fn start(mut self, address: Net::Addr, connection: Net::Conn, mut remote_action: Sender<RemoteAction<Net>>) -> (JoinHandle<Session<Net>>, Sender<SessionAction<Net>>) {
+		let (action_sender, mut action_receiver) = mpsc::channel::<SessionAction<Net>>(20);
 		let join_handle = task::spawn(async move {
 			// Writing Thread, Listens to action_receiver and occasionally writes to writer
 			
-			// Frame Connection Stream with Packet Codec
-			let mut packet_stream = PacketCodec::new(connection.stream);
+			let mut stream_buffer = AlignedVec::with_capacity(1024);
+			let packet_reader = connection.clone();
+			let packet_sink = RkyvWriter::<<Net as Network>::Conn, VarintLength>::new(connection);
+			futures::pin_mut!(packet_sink);
+			futures::pin_mut!(packet_reader);
+			
 			loop {
-				let error: Result<(), SessionError> = try {
-					futures::select!{
-						// Receive Actions, Write Packets
-						action = action_receiver.recv() => {
-							if let Some(action) = action {
-								match action {
-									SessionAction::SendPacket(packet) => {
-										log::info!("Received Packet: {:?}", packet);
-									}
-									_ => { log::error!("Session Received wrong action: {:?}", action) }
+				let stream_future = archive_stream::<Net::Conn, NodePacket<Net>, VarintLength>(&mut packet_reader, &mut stream_buffer).fuse();
+				futures::pin_mut!(stream_future);
+
+				futures::select! {
+					// Receive Actions, Write Packets
+					action = action_receiver.next() => {
+						if let Some(action) = action {
+							match action {
+								SessionAction::SendPacket(packet) => {
+									log::info!("Received Packet: {:?}", packet);
 								}
-							} else {
-								log::error!("Session with {:?} Closed", connection.address);
-								break;
+								_ => { log::error!("Session Received wrong action: {:?}", action); }
 							}
-							
-						},
-						packet = packet_stream.next() => {
-							let packet = packet.ok_or(SessionError::TunnelClosed)??;
-							if let Some(packet) = self.handle_packet(packet, &remote_action).await? {
-								packet_stream.feed(packet).await?;
+						} else {
+							log::error!("Session with peer {:?} Closed", address);
+						}
+						()
+						
+					},
+					packet = stream_future => {
+						if let Ok(packet) = packet {
+							if let Ok(Some(packet)) = self.handle_packet(packet, &mut remote_action).await {
+								log::info!("Sending packet: {:?}", packet);
+								packet_sink.send(&packet).await;
 							}
-						},
-					};
-				};
-				// If error, notify Remote thread
-				if let Err(error) = error { remote_action.send(RemoteAction::SessionError(Box::new(error))).await.unwrap() };
+						} else { log::error!("Packet Stream with {:?} closed", address); }
+						()
+					},
+				}
 			}
 			
 
