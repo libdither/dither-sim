@@ -1,5 +1,5 @@
 use bytecheck::CheckBytes;
-use futures::{AsyncBufRead, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 use rkyv::{AlignedVec, Archive, Deserialize, Infallible, Serialize, ser::serializers::{AlignedSerializer, AllocScratch, CompositeSerializer, FallbackScratch, HeapScratch, SharedSerializeMap}, validation::validators::DefaultValidator};
 /// Defines all the generic components of a node interacting with an internet structure.
 /// A Node should be able to work in any kind of network. simulated or not. This file provides the basic structures that any network implementation will use to interact with a Node.
@@ -19,7 +19,7 @@ pub trait Network: Clone + Send + Sync + std::fmt::Debug + 'static
 
 	type ArchivedAddress: Deserialize<Self::Address, Infallible> + for<'v> CheckBytes<DefaultValidator<'v>> + Send + Sync;
 	/// Bidirectional byte stream for sending and receiving NodePackets
-	type Conn: AsyncBufRead + AsyncWrite + std::fmt::Debug + Send + Sync + Clone + Unpin;
+	type Conn: AsyncRead + AsyncWrite + std::fmt::Debug + Send + Sync + Clone + Unpin;
 }
 
 /// Response Object sent wrapped in a NetAction when a connection is requested

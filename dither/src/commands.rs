@@ -1,15 +1,15 @@
 
-use std::net::Ipv4Addr;
-
 use node::NodeID;
 use serde::{Serialize, Deserialize};
+
+use crate::{Address, DitherNet};
 
 /// Commands for general interaction, instruction, and debugging of Dither (by simulations, or applications with privileges)
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DitherCommand {
 	GetNodeInfo,
 
-	Bootstrap(NodeID, node::net::Address),
+	Bootstrap(NodeID, Address),
 
 	/*
 	ConnectInsecure(node::net::Address), /// Connect insecurly to remote, implies public key exchange (MITM prone)
@@ -31,7 +31,7 @@ pub enum DitherCommand {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DitherEvent {
-	NodeInfo(node::net::NodeInfo)
+	NodeInfo(node::net::NodeInfo<DitherNet>)
 	/* Bootstrap(NodeID, node::net::Address),
 
 	ConnectInsecure(node::net::Address), /// Connect insecurly to remote, implies public key exchange (MITM prone)
