@@ -96,7 +96,7 @@ impl<Net: Network> Session<Net> {
 								log::info!("Sending packet: {:?}", packet);
 								packet_sink.send(&packet).await;
 							}
-						} else { log::error!("Packet Stream with {:?} closed", address); }
+						} else { log::error!("Packet Stream with {:?} closed", address); break; }
 					},
 				}
 			}

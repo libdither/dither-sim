@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
 
 	let mut rl = Editor::<()>::new();
 	println!("Welcome to Dither (🖧), type help for command list");
-    if rl.load_history(".dither-history").is_err() {
+    if rl.load_history("target/.dither-history").is_err() {
        // println!("No previous history.");
     }
 
@@ -64,9 +64,9 @@ async fn main() -> anyhow::Result<()> {
 						}
 						"help" => {
 							println!(r"
-							connect <NodeID> <Address> - connect to remote device
-							info - get info about this node
-							action - wip, send node action
+connect <NodeID> <Address> - connect to remote device
+info - get info about this node
+action - wip, send node action
 							")
 						}
 						_ => { println!("Unknown command, type help for a list of commands"); }
@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
-	rl.save_history(".dither-history").unwrap();
+	rl.save_history("target/.dither-history").unwrap();
 
 	// println!("event receiver closed with: {:?}", event_join.await);
 

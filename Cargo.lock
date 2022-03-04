@@ -1711,7 +1711,7 @@ dependencies = [
 [[package]]
 name = "hashdb"
 version = "0.1.0"
-source = "git+https://github.com/libdither/disp#013719ec76b6e51ba3eaccfb1256f694f6bdc26a"
+source = "git+https://github.com/libdither/disp#6117976f820712678697f623e478576472aa85e8"
 dependencies = [
  "bincode",
  "bs58",
@@ -2745,9 +2745,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da32515d9f6e6e489d7bc9d84c71b060db7247dc035bbe44eac88cf87486d8d5"
+checksum = "87f3e037eac156d1775da914196f0f37741a274155e34a0b7e427c35d2a2ecb9"
 
 [[package]]
 name = "opaque-debug"
@@ -3199,9 +3199,9 @@ dependencies = [
 
 [[package]]
 name = "rkyv"
-version = "0.7.34"
+version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e9942553e42ae745e653fb220aa4933809846c4d0cd39d2269b56d9562ff399"
+checksum = "2cdcf5caf69bcc87b1e3f5427b4f21a32fdd53c2847687bdf9861abb1cdaa0d8"
 dependencies = [
  "bytecheck",
  "hashbrown 0.12.0",
@@ -3230,9 +3230,9 @@ dependencies = [
 
 [[package]]
 name = "rkyv_derive"
-version = "0.7.34"
+version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe075bc9ce93845eed18cefe36ad7f1bfdd24ec9b9fb2ba589adee9386a92956"
+checksum = "a6cf557da1f81b8c7e889c59c9c3abaf6978f7feb156b9579e4f8bf6d7a2bada"
 dependencies = [
  "proc-macro2",
  "quote",
