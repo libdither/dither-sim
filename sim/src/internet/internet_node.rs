@@ -150,7 +150,7 @@ pub struct NodeInfo {
 
 #[derive(Debug, Clone)]
 pub struct MachineInfo {
-	pub route_coord: Option<RouteCoord>,
+	pub route_coord: RouteCoord,
 	pub public_addr: Option<Address>,
 	pub node_id: NodeID,
 	pub remotes: usize,

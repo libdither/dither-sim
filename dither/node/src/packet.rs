@@ -1,42 +1,68 @@
 
 
-use bytecheck::CheckBytes;
-use rkyv::{Archive, Archived, Deserialize, Infallible, Serialize};
+use std::fmt;
 
-use crate::{net::Network, session::SessionKey};
+use bytecheck::CheckBytes;
+use futures::SinkExt;
+use rkyv::{AlignedVec, Archive, Archived, Deserialize, Infallible, Serialize, with::Inline};
+use rkyv_codec::{RkyvCodecError, RkyvWriter, VarintLength, archive_stream};
+
+use crate::{net::{Connection, Network}};
 use super::{NodeID, RouteCoord};
+
+/// Acknowledging node packet
+#[derive(Debug, Archive, Serialize, Deserialize, Clone)]
+#[archive_attr(derive(CheckBytes))]
+pub struct AckNodePacket<'a, Net: Network> {
+	#[with(Inline)]
+	pub packet: &'a NodePacket<Net>, // The packet being sent
+	pub packet_id: u16, // This packet's packet id
+	pub should_ack: bool, // Should the node that receives this packet immediately send back an acknowledgement
+	pub acknowledging: Option<u16>, // Packet that this packet is acknowledging
+}
+
 /// Packets that are sent between nodes in this protocol.
 #[derive(Debug, Archive, Serialize, Deserialize, Clone)]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-#[archive_attr(derive(CheckBytes), check_bytes(bound = "__C: rkyv::validation::ArchiveContext, <__C as rkyv::Fallible>::Error: bytecheck::Error"))]
+#[archive_attr(derive(CheckBytes, Debug), check_bytes(bound = "__C: rkyv::validation::ArchiveContext, <__C as rkyv::Fallible>::Error: bytecheck::Error"))]
 pub enum NodePacket<Net: Network> {
-	/// Initiating Packet with unknown node
-	InitUnknown { initiating_id: NodeID },
-	/// Response to InitUnknown packet, Init packet might be sent after this
-	InitAckUnknown { acknowledging_id: NodeID },
-	/// Initial Packet, establishes encryption as well as some other things
-	Init {
-		initiating_id: NodeID,
-		init_session_key: SessionKey,
-		receiving_id: NodeID, // In future, Init packet will be asymmetrically encrypted with remote public key
+	/// Bootstrap off of a node
+	Bootstrap {
+		requester: NodeID,
 	},
 
-	/// Response to the Initial Packet, establishes encrypted tunnel.
-	InitAck {
-		ack_session_key: SessionKey, // Session key sent by Init, acknowledged
-		acknowledging_id: NodeID,    // Previously receiving_id in Init packet
-		receiving_id: NodeID,        // Previously initiating_id in Init packet
-	},
-	/// Sent back if received non-encrypted, non-init packet
-	BadPacket {
-		#[omit_bounds] #[archive_attr(omit_bounds)] packet: Box<NodePacket<Net>>,
+	/// Tell another node my info
+	Info {
+		route_coord: RouteCoord,
+		active_peers: usize,
 	},
 
-	/// Packet representing encryption
-	Session {
-		session_key: SessionKey,
-		#[omit_bounds] #[archive_attr(omit_bounds)] encrypted_packet: Box<NodePacket<Net>>,
+	/// Request a certain number of another node's peers that are closest to this node to make themselves known
+	RequestPeers {
+		nearby: Vec<(RouteCoord, usize)>
 	},
+
+	/// Notify peer near `requesting` that the `requesting` node is looking for a peer.
+	WantPeer {
+		requesting: NodeID,
+		addr: Net::Address
+	},
+
+	WantPeerResp {
+		prompting_node: NodeID,
+	},
+
+	Notify {
+		active: bool,
+	},
+
+	/// `Ack` packet
+	/// used to respond to acknowledge packets if there is no other suitable acknowledgement packet.
+	Ack,
+
+	/// Raw Data Packet
+	Data(Vec<u8>),
+
 	/// Traversing packet
 	Traversal {
 		/// Place to Route Packet to
@@ -44,61 +70,12 @@ pub enum NodePacket<Net: Network> {
 		/// Packet to traverse to destination node
 		#[omit_bounds] #[archive_attr(omit_bounds)] session_packet: Box<NodePacket<Net>>, // Must be type Init or Session packet
 	},
+
 	/// Packet representing an origin location
 	Return {
 		#[omit_bounds] #[archive_attr(omit_bounds)] packet: Box<NodePacket<Net>>,
 		origin: RouteCoord,
 	},
-
-	/// ### Connection System
-	/// Sent immediately after establishing encrypted session, allows other node to get a rough idea about the node's latency
-	/// Contains list of packets for remote to respond to
-	ConnectionInit {
-		ping_id: u128,
-		#[omit_bounds] #[archive_attr(omit_bounds)] initial_packets: Vec<NodePacket<Net>>,
-	},
-
-	/// Exchange Info with another node
-	ExchangeInfo {
-		/// Tell another node my Route Coordinate if I have it
-		calculated_route_coord: Option<RouteCoord>,
-		/// Number of direct connections I have
-		useful_connections: usize,
-		/// ping (latency) to remote node
-		average_latency: u64,
-		latency_accuracy: u32,
-		response: bool,
-	},
-
-	/// Notify another node of peership
-	/// * `usize`: Rank of remote in peer list
-	/// * `RouteCoord`: My Route Coordinate
-	/// * `usize`: Number of peers I have
-	/// * `u64`: Latency to remote node
-	PeerNotify(usize, RouteCoord, usize, u64),
-	/// Propose routing coordinates if nobody has any nodes
-	ProposeRouteCoords(RouteCoord, RouteCoord), // First route coord = other node, second route coord = myself
-	/// Proposed route coords (original coordinates, orientation, bool), bool = true if acceptable
-	ProposeRouteCoordsResponse(RouteCoord, RouteCoord, bool),
-
-	/// ### Self-Organization System
-	/// Request a certain number of another node's peers that are closest to this node to make themselves known
-	/// * `usize`: Number of peers requested
-	/// * `Option<RouteCoord>`: Route Coordinates of the other node if it has one
-	RequestPings(usize, Option<RouteCoord>),
-
-	/// Tell a peer that this node wants a ping (implying a potential direct connection)
-	WantPing(NodeID, Net::Address),
-	/// Sent when node accepts a WantPing Request
-	/// * `NodeID`: NodeID of Node who send the request in response to a RequestPings
-	/// * `u64`: Distance to that nodeTraversedPacket
-	AcceptWantPing(NodeID, u64),
-
-	/* /// Request a session that is routed through node to another RouteCoordinate
-	RoutedSessionRequest(RouteCoord),
-	RoutedSessionAccept(), */
-	/// Raw Data Packet
-	Data(Vec<u8>),
 }
 impl<Net: Network> NodePacket<Net> 
 where <Net::Address as Archive>::Archived: Deserialize<Net::Address, Infallible>
@@ -106,5 +83,36 @@ where <Net::Address as Archive>::Archived: Deserialize<Net::Address, Infallible>
 	pub fn from_archive(archive: &Archived<NodePacket<Net>>) -> Self
 	{
 		Deserialize::<NodePacket<Net>, Infallible>::deserialize(archive, &mut Infallible).unwrap()
+	}
+	pub fn create_codec(connection: Connection<Net>) -> (Net::Address, PacketRead<Net>, PacketWrite<Net>) {
+		let Connection { addr, read, write } = connection;
+		(addr, PacketRead::new(read), PacketWrite::new(write))
+	}
+}
+
+pub struct PacketRead<Net: Network> {
+	reader: Net::Read,
+	stream_buffer: AlignedVec,
+}
+impl<Net: Network> std::fmt::Debug for PacketRead<Net> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.debug_struct("PacketRead").finish() }
+}
+impl<'b, Net: Network> PacketRead<Net> {
+	pub fn new(reader: Net::Read) -> Self { Self { reader, stream_buffer: AlignedVec::with_capacity(1024) } }
+	pub async fn read_packet(&'b mut self) -> Result<&'b Archived<AckNodePacket<'b, Net>>, RkyvCodecError> {
+		let packet = archive_stream::<Net::Read, AckNodePacket<Net>, VarintLength>(&mut self.reader, &mut self.stream_buffer).await?;
+		Ok(packet)
+	}
+}
+pub struct PacketWrite<Net: Network> {
+	writer: RkyvWriter<Net::Write, VarintLength>,
+}
+impl<Net: Network> std::fmt::Debug for PacketWrite<Net> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.debug_struct("PacketWrite").finish() }
+}
+impl<Net: Network> PacketWrite<Net> {
+	pub fn new(writer: Net::Write) -> Self { Self { writer: RkyvWriter::new(writer) } }
+	pub async fn write_packet<'a>(&mut self, packet: &AckNodePacket<'a, Net>) -> Result<(), RkyvCodecError> {
+		Ok(self.writer.send(packet).await?)
 	}
 }

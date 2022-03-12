@@ -37,3 +37,5 @@ rkyv_codec = "0.2.0"
 [lib]
 name = "node"
 path = "src/lib.rs"
+
+[features]
