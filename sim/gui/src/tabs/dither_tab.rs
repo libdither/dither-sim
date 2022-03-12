@@ -1,12 +1,12 @@
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr};
 
 use super::{Icon, Tab};
 use anyhow::Context;
 use iced::{Align, Button, Color, Column, Container, Element, Length, Point, Row, Text, Vector, button, canvas::{self, Path, Stroke, event}, keyboard};
 use iced_aw::TabLabel;
-use libdither::{DitherCommand, Multiaddr};
+use libdither::{DitherCommand, Address};
 use petgraph::Undirected;
-use sim::{FieldPosition, MachineInfo, NodeID, NodeIdx, NodeType, RouteCoord, WireIdx, node::net::Address};
+use sim::{FieldPosition, MachineInfo, NodeID, NodeIdx, NodeType, RouteCoord, WireIdx};
 
 use crate::{gui::loaded, network_map::{self, NetworkEdge, NetworkMap, NetworkNode}};
 
@@ -23,7 +23,7 @@ impl DitherTabNode {
 		Self {
 			id,
 			node_id: info.node_id,
-			route_coord: info.route_coord.unwrap_or((index as i64 * 90, 0)),
+			route_coord: info.route_coord,
 			known_self_addr: info.public_addr,
 			network_ip: info.network_ip,
 		}
@@ -145,10 +145,10 @@ impl DitherTab {
 					match netmap_msg {
 						network_map::Message::TriggerConnection(from, to) => {
 							let node = self.map.node(to).ok_or(anyhow!("No node: {}", to))?;
-							let network_ip = node.network_ip.clone().ok_or(anyhow!("Node {:?} does not have a network ip", to))?;
-							let network_ip = format!("/ip4/{}/tcp/3000", network_ip).parse::<Multiaddr>().context("cannot parse multihash")?;
-							let network_ip = Address(network_ip.to_vec());
-							
+							let network_ip = SocketAddr::new(
+								node.network_ip.clone().ok_or(anyhow!("Node {:?} does not have a network ip", to))?.into(),
+								3000
+							);
 							log::debug!("Connecting node: {:?} to {:?}", from, node);
 							return Some(loaded::Message::DitherCommand(from, DitherCommand::Bootstrap(node.node_id.clone(), network_ip)));
 						},

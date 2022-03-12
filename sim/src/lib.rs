@@ -7,8 +7,6 @@ extern crate log;
 extern crate thiserror;
 #[macro_use]
 extern crate derivative;
-/* #[macro_use]
-extern crate derivative; */
 
 mod internet;
 pub use internet::*;

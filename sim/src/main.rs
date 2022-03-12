@@ -5,8 +5,8 @@ extern crate serde;
 extern crate log;
 #[macro_use]
 extern crate thiserror;
-/* #[macro_use]
-extern crate derivative; */
+#[macro_use]
+extern crate derivative;
 
 mod internet;
 
@@ -19,7 +19,7 @@ fn main() {
 	netsim_embed_machine::iface::Iface::new().expect("netsim: tun adapters not supported");
 	
 	netsim_embed::run(async {
-		let internet = Internet::new("./target/debug/device");
+		let mut internet = Internet::new("./target/debug/device");
 		let (runtime, _receiver, _sender) = internet.init().await.expect("Failed to initialize network");
 		internet.run(runtime).await;
 	});

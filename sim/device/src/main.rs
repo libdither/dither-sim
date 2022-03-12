@@ -2,19 +2,20 @@
 
 #![feature(try_blocks)]
 
-use std::{str::FromStr, thread};
+use std::{net::SocketAddr, str::FromStr, thread};
+use async_std::{task};
+use futures::{FutureExt, StreamExt, SinkExt, channel::mpsc};
 
 use libdither::{DitherCore, commands::DitherCommand};
-use tokio::sync::mpsc;
 
 mod types;
 pub use types::{DeviceCommand, DeviceEvent};
 
 use anyhow::{Context, anyhow};
 
-#[tokio::main]
+#[async_std::main]
 async fn main() -> anyhow::Result<()> {
-	let (event_sender, mut event_receiver) = mpsc::channel(20);
+	let (mut event_sender, mut event_receiver) = mpsc::channel(20);
 	/* macro_rules! resp_debug{
 		($($arg:tt)*) => {{
 			let _ = event_sender.send(DeviceEvent::Debug(format!($($arg)*))).await;
@@ -22,18 +23,18 @@ async fn main() -> anyhow::Result<()> {
 	} */
 
 	// Stdout parsing thread
-	let parse_events = tokio::spawn(async move {
-		while let Some(event) = event_receiver.recv().await {
+	let parse_events = task::spawn(async move {
+		while let Some(event) = event_receiver.next().await {
 			println!("<{}", event); // Print to stdout, requires '<' to be marked as event
 		}
 	});
 
-	let (command_sender, mut command_receiver) = mpsc::channel(20);
+	let (mut command_sender, mut command_receiver) = mpsc::channel(20);
 	// Stdin parsing thread
-	let parse_input_commands = thread::spawn(|| async move {
-		let stdin = std::io::stdin();
+	let parse_input_commands = task::spawn(async move {
+		let stdin = async_std::io::stdin();
 		let mut input = String::new();
-		while let Ok(_) = stdin.read_line(&mut input) {
+		while let Ok(_) = stdin.read_line(&mut input).await {
 			if let Ok(command) = DeviceCommand::from_str(&input) {
 				command_sender.send(command).await.expect("Command Sender should be open");
 			} else {
@@ -44,18 +45,18 @@ async fn main() -> anyhow::Result<()> {
 		()
 	});
 	
-	let listen_addr = libdither::Multiaddr::from_str("/ip4/0.0.0.0/tcp/3000")?;
+	let listen_addr = SocketAddr::from_str("/ip4/0.0.0.0/tcp/3000")?;
 	let (dither_core, mut dither_event_receiver) = DitherCore::init(listen_addr)?;
-	let (dither_command_sender, dither_command_receiver) = mpsc::channel(20);
-	let dither_core_thread = tokio::spawn(async move {
+	let (mut dither_command_sender, dither_command_receiver) = mpsc::channel(20);
+	let dither_core_thread = task::spawn(async move {
 		dither_core.run(dither_command_receiver).await
 	});
 
 	// Main Thread for Device
-	let main_thread = tokio::spawn(async move {
+	let main_thread = task::spawn(async move {
 		loop {
-			tokio::select! {
-				dither_event = dither_event_receiver.recv() => {
+			futures::select! {
+				dither_event = dither_event_receiver.next().fuse() => {
 					let result: anyhow::Result<()> = try {
 						match dither_event.ok_or(anyhow!("failed to receive DitherEvent"))? {
 							event => event_sender.try_send(DeviceEvent::DitherEvent(event)).context("failed to send device event")?
@@ -66,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
 						event_sender.try_send(DeviceEvent::Error(format!("{:?}", err))).unwrap();
 					}
 				}
-				command = command_receiver.recv() => {
+				command = command_receiver.next().fuse() => {
 					let result: anyhow::Result<()> = try {
 						match command.ok_or(anyhow!("Failed to receive DeviceCommand"))? {
 							DeviceCommand::DitherCommand(dither_command) => {
@@ -82,10 +83,10 @@ async fn main() -> anyhow::Result<()> {
 		
 	});
 
-	let rets = tokio::join!(parse_input_commands.join().expect("input command thread failed"), parse_events, main_thread, dither_core_thread);
-	let _ = rets.3??;
-
-	//tokio::join!(parse_input_commands).await;
+	parse_input_commands.await;
+	parse_events.await;
+	main_thread.await;
+	dither_core_thread.await?;
 
 	Ok(())
 }
