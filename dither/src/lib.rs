@@ -13,7 +13,7 @@ use async_std::{net::{TcpListener, TcpStream}, task};
 use rkyv::Archived;
 
 use node::net::Network;
-pub use node::{self, Node, NodeAction, net::{NetAction, NetEvent, UserAction, UserEvent, Connection}};
+pub use node::{self, Node, NodeAction, NodePacket, net::{NetAction, NetEvent, UserAction, UserEvent, Connection}};
 
 pub mod commands;
 pub mod encryption;
@@ -101,8 +101,7 @@ impl DitherCore {
 							// Handle Network Actions
 							match net_action {
 								NetAction::Connect(node_id, addr) => {
-									// Connect to remote
-									log::debug!("Connect to remote: {:?}", addr);
+									log::debug!("Connecting to: {:?}", addr);
 									let mut action_sender = node_action_sender.clone();
 									let my_node_id = my_node_id.clone();
 									let _ = task::spawn(async move {
@@ -131,9 +130,10 @@ impl DitherCore {
 					if let Some(tcp_stream) = tcp_stream {
 						let result: Result<Connection<DitherNet>, TransportError> = try {
 							let stream = tcp_stream?;
-							log::debug!("Received new connection: {:?}", stream.peer_addr());
 							let addr = stream.peer_addr()?;
-							encryption::encrypt_incoming(stream.clone(), stream, &my_node_id, addr).await?
+							let conn = encryption::encrypt_incoming(stream.clone(), stream, &my_node_id, addr).await?;
+							log::debug!("Incoming connection: {:?}", conn);
+							conn
 						};
 						match result {
 							Ok(conn) => {

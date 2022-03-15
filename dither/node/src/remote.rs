@@ -26,6 +26,8 @@ pub struct SessionInfo {
 pub enum RemoteAction<Net: Network> {
 	/// Bootstrap off of Net::Address
 	Bootstrap,
+	/// Send arbitrary NodePacket
+	SendPacket(NodePacket<Net>),
 	/// Handle new Connection
 	HandleConnection(Connection<Net>),
 	/// Query Route Coord from Route Coord Lookup (see NetAction)
@@ -112,9 +114,13 @@ impl<Net: Network> DirectRemote<Net> {
 				// Receive Actions
 				action = action_receiver.next() => {
 					if let Some(action) = action {
+						log::debug!("Remote {} received action: {:?}", self.addr, action);
 						match action {
 							RemoteAction::Bootstrap => {
 								self.send_packet(&mut writer, &NodePacket::Bootstrap { requester: self_node_id.clone() }, true).await.unwrap();
+							}
+							RemoteAction::SendPacket(packet) => {
+								self.send_packet(&mut writer, &packet, true).await.unwrap();
 							}
 							RemoteAction::HandleConnection(connection) => {
 								if let Some((addr, reader_new, writer_new)) = NodePacket::create_codec(connection, &self_node_id) {
@@ -132,11 +138,12 @@ impl<Net: Network> DirectRemote<Net> {
 				}
 				// Receive Node Packets
 				packet = reader.read_packet().fuse() => {
-					let ArchivedAckNodePacket { packet, packet_id, should_ack, acknowledging } = packet.unwrap();
-					// Register acknowledgement
-					if let ArchivedOption::Some(unique_id) = acknowledging { self.ping_tracker.return_unique_id(*unique_id); }
-
 					let ret: Result<(), RemoteError> = try {
+						let ArchivedAckNodePacket { packet, packet_id, should_ack, acknowledging } = packet?;
+						// Register acknowledgement
+						if let ArchivedOption::Some(unique_id) = acknowledging { self.ping_tracker.return_unique_id(*unique_id); }
+
+						log::debug!("Received packet from {}: {:?} [{},{},{:?}]", self.addr, packet, packet_id, should_ack, acknowledging);
 						match packet {
 							// If receive Bootstrap Request, send Info packet
 							ArchivedNodePacket::Bootstrap { requester } => {
@@ -165,13 +172,22 @@ impl<Net: Network> DirectRemote<Net> {
 								if *should_ack { self.send_ack(&mut writer, *packet_id, &NodePacket::Ack).await?; }
 							},
 							
-							ArchivedNodePacket::Data(_) => todo!(),
+							ArchivedNodePacket::Data(data) => log::info!("Received data: {}", String::from_utf8_lossy(data)),
 							ArchivedNodePacket::Traversal { destination, session_packet } => todo!(),
 							ArchivedNodePacket::Return { packet, origin } => todo!(),
 						}
 					};
 					if let Err(err) = ret {
-						log::error!("Remote {} error: {}", self_node_id, err);
+						match err {
+							RemoteError::CodecError(RkyvCodecError::IoError(io_error)) => {
+								match io_error.kind() {
+									std::io::ErrorKind::UnexpectedEof => log::info!("Remote {} disconnected", self_node_id),
+									_ => log::error!("Remote {} I/O error: {}", self_node_id, io_error)
+								}
+							}
+							_ => log::error!("Remote {} error: {}", self_node_id, err),
+						}
+						 break;
 					}
 				}
 			}
@@ -222,20 +238,20 @@ impl<Net: Network> Remote<Net> {
 	) -> (JoinHandle<Self>, Sender<RemoteAction<Net>>) {
 		let (tx, mut rx) = mpsc::channel(20);
 
-		let mut bootstrap_sender = tx.clone();
+		let mut initial_action_sender = tx.clone();
 		let join = task::spawn(async move {
 			loop {
 				match rx.next().await {
 					Some(RemoteAction::HandleConnection(connection)) => {
 						if let Some((addr, reader, writer)) = NodePacket::create_codec(connection, &self.node_id) {
-							bootstrap_sender.send(RemoteAction::Bootstrap).await.unwrap();
+							initial_action_sender.send(RemoteAction::Bootstrap).await.unwrap();
 							break self.run(rx, reader, writer, node_action, addr, session_info).await
 						} else {
 							log::error!("Received connection, but NodeID did not match");
 							break self
 						}
 					}
-					Some(action) => log::error!("Received: {:?} in bootstrapping mode", action),
+					Some(action) => log::warn!("Received: {:?} in bootstrapping mode", action),
 					None => { log::info!("RemoteNode shutting down (was in bootstrapping mode)"); break self }
 				}
 			}

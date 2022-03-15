@@ -65,6 +65,8 @@ impl PingTracker {
 	}
 	// Return acknowledged id
 	pub fn return_unique_id(&mut self, id: u16) -> Option<()> {
+		self.ping_count += 1;
+		
 		let next_free_head = id as usize;
 		let (send_time, next_free) = self.ping_queue.get_mut(next_free_head)?;
 		let send_time = send_time.take()?; // Make slot available

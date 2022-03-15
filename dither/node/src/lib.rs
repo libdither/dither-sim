@@ -9,8 +9,6 @@
 
 #[macro_use]
 extern crate thiserror;
-#[macro_use]
-extern crate derivative;
 
 use async_std::{sync::Mutex, task::{self, JoinHandle}};
 use futures::{SinkExt, StreamExt, channel::mpsc::{self, Receiver, Sender}};
@@ -19,7 +17,7 @@ use replace_with::replace_with_or_abort;
 use std::{collections::{BTreeMap, HashMap}, fmt, sync::Arc, time::Instant};
 
 use net::{Connection, NetAction, NetEvent, Network, UserAction, UserEvent};
-use packet::NodePacket;
+pub use packet::NodePacket;
 
 pub mod net;
 mod packet;
@@ -93,6 +91,9 @@ impl<Net: Network> RemoteHandle<Net> {
 		})
 	}
 	pub fn active(&self) -> bool { if let RemoteHandle::Active { .. } = self { true } else { false } }
+	pub async fn connect(&mut self, connection: Connection<Net>) -> Result<(), NodeError<Net>> {
+		self.action(RemoteAction::HandleConnection(connection)).await
+	}
 }
 impl<Net: Network> fmt::Display for RemoteHandle<Net> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -267,8 +268,9 @@ impl<Net: Network> Node<Net> {
 		let index = if self.addrs.contains_key(addr) {
 			self.index_by_addr(addr)?
 		} else {
-			let index = self.remotes.insert(RemoteHandle::new(Remote::new_direct(node_id, addr.clone())));
+			let index = self.remotes.insert(RemoteHandle::new(Remote::new_direct(node_id.clone(), addr.clone())));
 			self.addrs.insert(addr.clone(), index);
+			self.ids.insert(node_id, index);
 			index
 		};
 		self.remote_mut(index)
@@ -295,14 +297,15 @@ impl<Net: Network> Node<Net> {
 
 		while let Some(action) = action_receiver.next().await {
 			let node_error: Result<(), NodeError<Net>> = try {
+				log::debug!("Received node action: {:?}", action);
 				match action {
 					// Initiate Bootstrapping process
 					NodeAction::Bootstrap(node_id, addr) => {
 						log::debug!("Bootstrapping: {}, {}", node_id, addr);
 						let session_info = self.gen_session_info();
 						let handle = self.get_or_new_remote(node_id.clone(), &addr)?;
-						handle.spawn_bootstrapping(node_action, session_info).await;
-						network_action.send(NetAction::Connect(node_id, addr)).await?;
+						handle.spawn_bootstrapping(node_action, session_info).await; // Spawn listening for an initial connection 
+						network_action.send(NetAction::Connect(node_id, addr)).await?; // Attempt to connect
 					}
 					// Forward Net actions sent by remote
 					NodeAction::NetAction(net_action) => network_action.send(net_action).await?,
@@ -312,20 +315,16 @@ impl<Net: Network> Node<Net> {
 							// Handle requested connection
 							NetEvent::ConnectResponse(conn_res) => {
 								let conn = conn_res.map_err(|e|NodeError::ConnectionError(e))?;
-								let node_idx = self.index_by_addr(&conn.addr)?;
-								let session_info = self.gen_session_info();
+								let node_idx = self.index_by_node_id(&conn.node_id)?;
 								let handle = self.remote_mut(node_idx)?;
-								handle.spawn(node_action, conn, session_info).await;
+								handle.connect(conn).await?; // Update connection for existing node
 							},
+							// Handle unrequested connection
 							NetEvent::Incoming(conn) => {
 								let session_info = self.gen_session_info();
 								let handle = self.get_or_new_remote(conn.node_id.clone(), &conn.addr)?;
-								handle.spawn(node_action, conn, session_info).await;
+								handle.spawn(node_action, conn, session_info).await; // Spawn node with connection
 							}
-							// Handle unprompted connection
-							/* NetEvent::Incoming(addr, connection) => {
-								self.handle_connection(&action_sender, addr, connection).await?;
-							}, */
 							// Handle user action
 							NetEvent::UserAction(user_action) => {
 								match user_action {
@@ -343,12 +342,16 @@ impl<Net: Network> Node<Net> {
 									_ => { log::error!("Received Unhandled UserAction: {:?}", user_action) }
 								}
 							}
-							_ => log::error!("Received Unhandled NetEvent: {:?}", net_event)
+							// _ => log::error!("Received Unhandled NetEvent: {:?}", net_event)
 						}
 					},
 					NodeAction::PrintNode => {
 						println!("{}", self);
 					},
+					NodeAction::ForwardPacket(node_id, packet) => {
+						let handle = self.remote_mut(self.index_by_node_id(&node_id)?)?;
+						handle.action(RemoteAction::SendPacket(packet)).await?;
+					}
 					_ => { log::error!("Received Unused NodeAction<Net>: {:?}", action) },
 				}
 			};

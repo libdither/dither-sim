@@ -1,4 +1,5 @@
 #![feature(try_blocks)]
+#![feature(str_split_as_str)]
 
 
 use std::net::Ipv4Addr;
@@ -11,10 +12,15 @@ use futures::SinkExt;
 use futures::StreamExt;
 use futures::channel::mpsc;
 use libdither::NodeAction;
+use libdither::NodePacket;
 use libdither::{DitherCommand, DitherCore, Address};
 use node::NodeID;
 
 use rustyline::{error::ReadlineError, Editor};
+
+async fn send_node_action(command_sender: &mut mpsc::Sender<DitherCommand>, action: NodeAction<libdither::DitherNet>) -> Result<(), mpsc::SendError> {
+	command_sender.send(DitherCommand::NodeAction(Arc::new(action))).await
+}
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
@@ -42,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
 			println!("{:?}", event);
 		}
 	});
-
+	
 	loop {
         let readline = rl.readline("> ");
         match readline {
@@ -62,16 +68,23 @@ async fn main() -> anyhow::Result<()> {
 							command_sender.send(DitherCommand::GetNodeInfo).await?;
 						}
 						"print" => {
-							command_sender.send(DitherCommand::NodeAction(Arc::new(NodeAction::PrintNode))).await?;
+							send_node_action(&mut command_sender, NodeAction::PrintNode).await?;
 						}
 						"action" => {
 							
+						}
+						"data" => {
+							let node_id = split.next().map(|s|s.parse::<NodeID>()).ok_or(anyhow!("Failed to parse NodeID"))??;
+							let data = split.as_str().as_bytes().to_vec();
+							
+							send_node_action(&mut command_sender, NodeAction::ForwardPacket(node_id, NodePacket::Data(data))).await?;
 						}
 						"help" => {
 							println!(r"
 connect <NodeID> <Address> - connect to remote device
 info - get info about this node
 action - wip, send node action
+data <NodeID> <String> - send arbitrary data to another node
 							")
 						}
 						_ => { println!("Unknown command, type help for a list of commands"); }
