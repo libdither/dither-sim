@@ -12,12 +12,13 @@ extern crate thiserror;
 #[macro_use]
 extern crate derivative;
 
-use async_std::task::{self, JoinHandle};
+use async_std::{sync::Mutex, task::{self, JoinHandle}};
 use futures::{SinkExt, StreamExt, channel::mpsc::{self, Receiver, Sender}};
+use replace_with::replace_with_or_abort;
 
-use std::{collections::{BTreeMap, HashMap}, mem::{self, MaybeUninit}, time::Instant};
+use std::{collections::{BTreeMap, HashMap}, fmt, sync::Arc, time::Instant};
 
-use net::{Connection, ConnectionResponse, NetAction, NetEvent, Network, UserAction, UserEvent};
+use net::{Connection, NetAction, NetEvent, Network, UserAction, UserEvent};
 use packet::NodePacket;
 
 pub mod net;
@@ -43,36 +44,67 @@ pub type RouteCoord = (i64, i64);
 
 #[derive(Debug)]
 pub enum RemoteHandle<Net: Network> {
-	Active(JoinHandle<Remote<Net>>, Sender<RemoteAction<Net>>),
-	Inactive(Remote<Net>),
+	Active { 
+		shared_state: Arc<Mutex<Remote<Net>>>,
+		join: JoinHandle<Remote<Net>>,
+		sender: Sender<RemoteAction<Net>>,
+	},
+	Inactive { remote: Remote<Net> },
 }
 
 impl<Net: Network> RemoteHandle<Net> {
-	pub fn new(remote: Remote<Net>) -> Self { Self::Inactive(remote) }
+	pub fn new(remote: Remote<Net>) -> Self { Self::Inactive { remote } }
 	/// Send RemoteAction to remote thread and create if thread doesn't exist.
-	async fn activate(&mut self, node_action: &Sender<NodeAction<Net>>, connection: Connection<Net>, session_info: SessionInfo) {
+	async fn spawn(&mut self, node_action: &Sender<NodeAction<Net>>, connection: Connection<Net>, session_info: SessionInfo) {
 		// Safety: Self is initialized in the next line
-		let mut ret = mem::replace(self, unsafe { MaybeUninit::uninit().assume_init() });
-		*self = match ret {
-			RemoteHandle::Inactive(remote) => {
+		// let mut ret = mem::replace(self, unsafe { MaybeUninit::uninit().assume_init() });
+		replace_with_or_abort(self, |mut ret| match ret {
+			RemoteHandle::Inactive { remote } => {
 				// Safety: Self is overwritten
-				let (join, sender) = remote.spawn(node_action.clone(), connection, session_info);
-				RemoteHandle::Active(join, sender)
+				let (join, sender) = remote.clone().spawn(node_action.clone(), connection, session_info);
+				RemoteHandle::Active { shared_state: Arc::new(Mutex::new(remote)), join, sender }
 			},
-			RemoteHandle::Active(_, _) => {
-				ret.action(RemoteAction::HandleConnection(connection)).await;
-				ret.action(RemoteAction::UpdateInfo(session_info)).await;
+			RemoteHandle::Active { .. } => {
+				if let RemoteHandle::Active { sender, .. } = &mut ret {
+					// Updates remote's active connection, or takes it out of bootstrapping mode
+					sender.try_send(RemoteAction::HandleConnection(connection)).unwrap();
+					sender.try_send(RemoteAction::UpdateInfo(session_info)).unwrap();
+				}
 				ret
 			},
-		};
+		});
+	}
+	async fn spawn_bootstrapping(&mut self, node_action: &Sender<NodeAction<Net>>, session_info: SessionInfo) {
+		replace_with_or_abort(self, |ret| match ret {
+			RemoteHandle::Inactive { remote } => {
+				// Safety: Self is overwritten
+				let (join, sender) = remote.clone().spawn_bootstrapping(node_action.clone(), session_info);
+				RemoteHandle::Active { shared_state: Arc::new(Mutex::new(remote)), join, sender }
+			},
+			RemoteHandle::Active { .. } => { log::error!("Tried to boostrap to node, but Remote is already active"); ret }
+		});
 	}
 	pub async fn action(&mut self, action: RemoteAction<Net>) -> Result<(), NodeError<Net>> {
 		Ok(match self {
-			RemoteHandle::Active(_, sender) => {
+			RemoteHandle::Active { sender, .. } => {
 				sender.send(action).await?
 			}
-			RemoteHandle::Inactive(_) => Err(RemoteError::SessionInactive)?
+			RemoteHandle::Inactive { .. } => Err(RemoteError::SessionInactive)?
 		})
+	}
+	pub fn active(&self) -> bool { if let RemoteHandle::Active { .. } = self { true } else { false } }
+}
+impl<Net: Network> fmt::Display for RemoteHandle<Net> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			RemoteHandle::Active { shared_state, .. } => {
+				let remote = task::block_on(shared_state.lock());
+				writeln!(f, "[*] {}", remote)
+			}
+			RemoteHandle::Inactive { remote } => {
+				writeln!(f, "[ ] {}", remote)
+			},
+		}
 	}
 }
 
@@ -80,6 +112,7 @@ impl<Net: Network> RemoteHandle<Net> {
 /// Actions that can be run by an external entity (either the internet implementation or the user)
 #[derive(Debug)]
 pub enum NodeAction<Net: Network> {
+
 	/// Bootstrap this node onto a specific other network node, starts the self-organization process
 	Bootstrap(NodeID, Net::Address),
 
@@ -116,13 +149,18 @@ pub enum NodeAction<Net: Network> {
 	ConnectRouted(NodeID, usize),
 	/// Send specific packet to node
 	SendData(NodeID, Vec<u8>), */
+
+	PrintNode,
 }
 
 #[derive(Error, Debug)]
 pub enum NodeError<Net: Network> {
 	// Error from Remote Node Thread
-	#[error(transparent)]
+	#[error("Remote Error: {0}")]
 	RemoteError(#[from] RemoteError),
+	#[error("Connection error: {0}")]
+	ConnectionError(Net::ConnectionError),
+	
 	#[error("Failed to send message")]
 	SendError(#[from] mpsc::SendError),
 
@@ -155,6 +193,8 @@ pub struct Node<Net: Network> {
 	/// Unique Identifier for node on the network, known as the Hash of the public key
 	pub node_id: NodeID,
 
+	/// Represents this node's listening address on the local network.
+	pub local_addr: Option<Net::Address>,
 	/// Represents what this node is identified as on the network implementation. In real life, there would be multiple of these but for testing purposes there will just be one.
 	pub public_addr: Option<Net::Address>,
 
@@ -186,6 +226,7 @@ impl<Net: Network> Node<Net> {
 	pub fn new(node_id: NodeID) -> Node<Net> {
 		Node {
 			node_id,
+			local_addr: None,
 			public_addr: None,
 			route_coord: RouteCoord::default(),
 			start_time: Instant::now(),
@@ -216,7 +257,7 @@ impl<Net: Network> Node<Net> {
 	}
 	pub fn index_by_addr(&self, addr: &Net::Address) -> Result<RemoteIdx, NodeError<Net>> {
 		self.addrs
-    		.get(addr)
+			.get(addr)
 			.cloned()
 			.ok_or(NodeError::UnknownNetAddr {
 				net_addr: addr.clone(),
@@ -257,8 +298,11 @@ impl<Net: Network> Node<Net> {
 				match action {
 					// Initiate Bootstrapping process
 					NodeAction::Bootstrap(node_id, addr) => {
-						let handle = self.get_or_new_remote(node_id, &addr)?;
-						handle.action(RemoteAction::Bootstrap(addr)).await?;
+						log::debug!("Bootstrapping: {}, {}", node_id, addr);
+						let session_info = self.gen_session_info();
+						let handle = self.get_or_new_remote(node_id.clone(), &addr)?;
+						handle.spawn_bootstrapping(node_action, session_info).await;
+						network_action.send(NetAction::Connect(node_id, addr)).await?;
 					}
 					// Forward Net actions sent by remote
 					NodeAction::NetAction(net_action) => network_action.send(net_action).await?,
@@ -266,23 +310,17 @@ impl<Net: Network> Node<Net> {
 					NodeAction::NetEvent(net_event) => {
 						match net_event {
 							// Handle requested connection
-							NetEvent::ConnectResponse(conn_resp) => {
-								match conn_resp {
-									ConnectionResponse::Error(addr, err) => log::error!("Error connecting to {}: {:?}", addr, err),
-									ConnectionResponse::Established(conn) => {
-										let node_idx = self.index_by_addr(&conn.addr)?;
-										let session_info = self.gen_session_info();
-										let handle = self.remote_mut(node_idx)?;
-										handle.activate(node_action, conn, session_info).await;
-									}
-									ConnectionResponse::NotFound(addr) => log::warn!("No host found: {}", addr),
-								}
+							NetEvent::ConnectResponse(conn_res) => {
+								let conn = conn_res.map_err(|e|NodeError::ConnectionError(e))?;
+								let node_idx = self.index_by_addr(&conn.addr)?;
+								let session_info = self.gen_session_info();
+								let handle = self.remote_mut(node_idx)?;
+								handle.spawn(node_action, conn, session_info).await;
 							},
 							NetEvent::Incoming(conn) => {
-								let index = self.index_by_addr(&conn.addr)?;
 								let session_info = self.gen_session_info();
-								let handle = self.remote_mut(index)?;
-								handle.activate(node_action, conn, session_info).await;
+								let handle = self.get_or_new_remote(conn.node_id.clone(), &conn.addr)?;
+								handle.spawn(node_action, conn, session_info).await;
 							}
 							// Handle unprompted connection
 							/* NetEvent::Incoming(addr, connection) => {
@@ -295,6 +333,7 @@ impl<Net: Network> Node<Net> {
 										let node_info = net::NodeInfo {
 											node_id: self.node_id.clone(),
 											route_coord: self.route_coord.clone(),
+											local_addr: self.local_addr.clone(),
 											public_addr: self.public_addr.clone(),
 											remotes: self.remotes.len(),
 											active_remotes: self.direct_sorted.len(),
@@ -304,14 +343,17 @@ impl<Net: Network> Node<Net> {
 									_ => { log::error!("Received Unhandled UserAction: {:?}", user_action) }
 								}
 							}
-							_ => { log::error!("Received Unhandled NetEvent: {:?}", net_event) }
+							_ => log::error!("Received Unhandled NetEvent: {:?}", net_event)
 						}
-					}
+					},
+					NodeAction::PrintNode => {
+						println!("{}", self);
+					},
 					_ => { log::error!("Received Unused NodeAction<Net>: {:?}", action) },
 				}
 			};
-			if node_error.is_err() {
-				log::error!("Node Error: {:?}", node_error);
+			if let Err(err) = node_error {
+				log::error!("Node Error: {}", err);
 			}
 		}
 
@@ -331,4 +373,20 @@ impl<Net: Network> Node<Net> {
 		remote.activate(action_sender);
 		Ok(())
 	} */
+}
+
+impl<Net: Network> fmt::Display for Node<Net> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		writeln!(f, "\nNode({})", self.node_id)?;
+		writeln!(f, "	local_addr: {:?}", self.local_addr)?;
+		writeln!(f, "	public_addr: {:?}", self.public_addr)?;
+		writeln!(f, "	route_coord: {:?}", self.route_coord)?;
+		writeln!(f, "	total_nodes: {:?}", self.remotes.len())?;
+		// writeln!(f, "start_time: {}", self.start_time)?;
+		for (idx, remote) in &self.remotes {
+			write!(f, "	{:?} {}", idx, remote)?;
+		}
+
+		Ok(())
+	}
 }

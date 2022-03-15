@@ -10,7 +10,7 @@ use rkyv::{AlignedVec, Archive, Deserialize, Infallible, Serialize, ser::seriali
 
 use crate::{NodeAction, NodeID, RouteCoord};
 
-/// Create Network implementation
+/// Network implementation trait
 pub trait Network: Clone + Send + Sync + std::fmt::Debug + 'static
 {
 	/// Represents potential Connection that can be established by Network implementation
@@ -19,14 +19,20 @@ pub trait Network: Clone + Send + Sync + std::fmt::Debug + 'static
 	+ serde::Serialize
 	+ for<'b> Serialize<CompositeSerializer<AlignedSerializer<&'b mut AlignedVec>, FallbackScratch<HeapScratch<256_usize>, AllocScratch>, SharedSerializeMap>>
 	+ Archive<Archived = Self::ArchivedAddress>;
-
+	/// Archived version of `Network::Address`
 	type ArchivedAddress: fmt::Debug + Deserialize<Self::Address, Infallible> + for<'v> CheckBytes<DefaultValidator<'v>> + Send + Sync;
+
 	/// Bidirectional byte stream for sending and receiving NodePackets
 	type Read: AsyncRead + Send + Sync + Clone + Unpin;
 	type Write: AsyncWrite + Send + Sync + Clone + Unpin;
+
+	/// Error emitted by encrypted transport protocol when establishing connection
+	type ConnectionError: std::error::Error + Send + Sync + fmt::Debug + fmt::Display;
 }
 
+/// Represents an encrypted two-way bytestream to another computer, identified by its NodeID and arbitrary network address.
 pub struct Connection<Net: Network> {
+	pub node_id: NodeID,
 	pub addr: Net::Address,
 	pub read: Net::Read,
 	pub write: Net::Write
@@ -35,21 +41,11 @@ impl<Net: Network> fmt::Debug for Connection<Net> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.debug_struct("Connection").field("addr", &self.addr).finish() }
 }
 
-/// Response Object sent wrapped in a NetAction when a connection is requested
-#[derive(Debug)]
-pub enum ConnectionResponse<Net: Network> {
-	/// Established Connection
-	Established(Connection<Net>),
-	/// Remote could not be located
-	NotFound(Net::Address),
-	/// Remote exists, but there was an error in establishing the connection. 
-	Error(Net::Address, String),
-}
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeInfo<Net: Network> {
 	pub node_id: NodeID,
 	pub route_coord: RouteCoord,
+	pub local_addr: Option<Net::Address>,
 	pub public_addr: Option<Net::Address>,
 	pub remotes: usize,
 	pub active_remotes: usize,
@@ -72,7 +68,7 @@ pub enum UserEvent<Net: Network> {
 #[derive(Debug)]
 pub enum NetAction<Net: Network> {
 	/// Connect to some remote
-	Connect(Net::Address),
+	Connect(NodeID, Net::Address),
 
 	/// Returned User Event
 	UserEvent(UserEvent<Net>),
@@ -86,7 +82,7 @@ pub enum NetAction<Net: Network> {
 #[derive(Debug)]
 pub enum NetEvent<Net: Network> {
 	/// Connection response
-	ConnectResponse(ConnectionResponse<Net>),
+	ConnectResponse(Result<Connection<Net>, Net::ConnectionError>),
 	/// Unprompted connection
 	Incoming(Connection<Net>),
 	/// Notify incoming UserAction for Node

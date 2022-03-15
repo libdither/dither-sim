@@ -84,9 +84,11 @@ where <Net::Address as Archive>::Archived: Deserialize<Net::Address, Infallible>
 	{
 		Deserialize::<NodePacket<Net>, Infallible>::deserialize(archive, &mut Infallible).unwrap()
 	}
-	pub fn create_codec(connection: Connection<Net>) -> (Net::Address, PacketRead<Net>, PacketWrite<Net>) {
-		let Connection { addr, read, write } = connection;
-		(addr, PacketRead::new(read), PacketWrite::new(write))
+	pub fn create_codec(connection: Connection<Net>, known_node_id: &NodeID) -> Option<(Net::Address, PacketRead<Net>, PacketWrite<Net>)> {
+		let Connection { node_id, addr, read, write } = connection;
+		if node_id == *known_node_id {
+			Some((addr, PacketRead::new(read), PacketWrite::new(write)))
+		} else { None }
 	}
 }
 

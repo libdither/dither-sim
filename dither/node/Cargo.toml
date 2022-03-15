@@ -33,6 +33,7 @@ serde = { version = "1.0.136", features = ["derive"] }
 hashdb = { git = "https://github.com/libdither/disp" }
 unsigned-varint = "0.7.1"
 rkyv_codec = "0.2.0"
+replace_with = "0.1.7"
 
 [lib]
 name = "node"

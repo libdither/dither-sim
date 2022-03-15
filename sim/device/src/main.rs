@@ -2,7 +2,7 @@
 
 #![feature(try_blocks)]
 
-use std::{net::SocketAddr, str::FromStr, thread};
+use std::{net::SocketAddr, str::FromStr};
 use async_std::{task};
 use futures::{FutureExt, StreamExt, SinkExt, channel::mpsc};
 

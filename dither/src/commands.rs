@@ -1,5 +1,7 @@
 
-use node::NodeID;
+use std::sync::Arc;
+
+use node::{NodeAction, NodeID};
 use serde::{Serialize, Deserialize};
 
 use crate::{Address, DitherNet};
@@ -8,6 +10,8 @@ use crate::{Address, DitherNet};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DitherCommand {
 	GetNodeInfo,
+	#[serde(skip)]
+	NodeAction(Arc<NodeAction<DitherNet>>),
 
 	Bootstrap(NodeID, Address),
 

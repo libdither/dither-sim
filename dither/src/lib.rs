@@ -2,17 +2,30 @@
 #![feature(try_blocks)]
 #![feature(io_error_more)]
 
+#[macro_use]
+extern crate thiserror;
+
 use std::net::SocketAddr;
 
+use encryption::EncryptionError;
 use futures::{StreamExt, channel::mpsc, SinkExt, FutureExt};
-use async_std::{io::ErrorKind, net::{TcpListener, TcpStream}, task::{self, JoinHandle}};
+use async_std::{net::{TcpListener, TcpStream}, task};
 use rkyv::Archived;
 
 use node::net::Network;
-pub use node::{self, Node, NodeAction, net::{NetAction, NetEvent, UserAction, UserEvent, ConnectionResponse, Connection}};
+pub use node::{self, Node, NodeAction, net::{NetAction, NetEvent, UserAction, UserEvent, Connection}};
 
 pub mod commands;
+pub mod encryption;
 pub use commands::{DitherCommand, DitherEvent};
+
+#[derive(Error, Debug)]
+pub enum TransportError {
+	#[error("Failed to establish encrypted connection: {0}")]
+	EncryptionError(#[from] EncryptionError<DitherNet>),
+	#[error("Failed to establish connection: I/O Error")]
+	IoError(#[from] std::io::Error),
+}
 
 pub struct DitherCore {
 	stored_node: Option<Node<DitherNet>>,
@@ -29,6 +42,7 @@ impl Network for DitherNet {
 	type ArchivedAddress = Archived<Self::Address>;
 	type Read = TcpStream;
 	type Write = TcpStream;
+	type ConnectionError = TransportError;
 }
 
 pub type Address = <DitherNet as Network>::Address;
@@ -50,41 +64,53 @@ impl DitherCore {
 		Ok((core, dither_event_receiver))
 	}
 	pub async fn run(mut self, mut dither_command_receiver: mpsc::Receiver<DitherCommand>) -> anyhow::Result<Self> {
-		let (node_join, mut node_action_sender) = if let Some(node) = self.stored_node {
-			node.spawn(self.node_network_sender.clone())
+		let listener = TcpListener::bind(self.listen_addr).await?;
+		let local_addr = listener.local_addr()?;
+		log::debug!("Listening on: {:?}", local_addr);
+		let mut incoming = listener.incoming();
+		
+		let ((node_join, mut node_action_sender), my_node_id) = if let Some(mut node) = self.stored_node {
+			node.local_addr = Some(local_addr);
+			let node_id = node.node_id.clone();
+			(node.spawn(self.node_network_sender.clone()), node_id)
 		} else { Err(anyhow::anyhow!("No stored node"))? };
 		
-		let listener = TcpListener::bind(self.listen_addr).await?;
-		let mut incoming = listener.incoming();
-	
 		let node_network_receiver = &mut self.node_network_receiver;
 		loop {
 			futures::select! {
 				dither_command = dither_command_receiver.next()  => {
 					let result: anyhow::Result<()> = try {
-						match dither_command.ok_or(anyhow::anyhow!("failed to receive dither command"))? {
+						let dither_command = if let Some(command) = dither_command { command } else { break };
+						// Handle Dither Commands
+						match dither_command {
 							DitherCommand::GetNodeInfo => node_action_sender.try_send(NodeAction::NetEvent(NetEvent::UserAction(UserAction::GetNodeInfo)))?,
+							DitherCommand::NodeAction(action) => {
+								if let Ok(action) = std::sync::Arc::try_unwrap(action) {
+									node_action_sender.try_send(action)?;
+								}
+							}
 							DitherCommand::Bootstrap(node_id, addr) => node_action_sender.try_send(NodeAction::Bootstrap(node_id, addr))?,
 						}
 					};
-					if let Err(err) = result { println!("Dither Command error: {}", err) }
+					if let Err(err) = result { log::error!("Dither Command error: {}", err) }
 				}
 				net_action = node_network_receiver.next() => { // Listen for net actions from Dither Node's Network API
 					if let Some(net_action) = net_action {
+						log::debug!("Received NetAction: {:?}", net_action);
 						let result: anyhow::Result<()> = try {
+							// Handle Network Actions
 							match net_action {
-								NetAction::Connect(addr) => {
+								NetAction::Connect(node_id, addr) => {
 									// Connect to remote
+									log::debug!("Connect to remote: {:?}", addr);
 									let mut action_sender = node_action_sender.clone();
+									let my_node_id = my_node_id.clone();
 									let _ = task::spawn(async move {
-										let conn_resp = match TcpStream::connect(addr.clone()).await {
-											Ok(conn) => ConnectionResponse::Established(Connection { addr, read: conn.clone(), write: conn }),
-											Err(err) => match err.kind() {
-												ErrorKind::HostUnreachable => ConnectionResponse::NotFound(addr),
-												_ => ConnectionResponse::Error(addr, format!("{}", err)),
-											}
+										let result: Result<Connection<DitherNet>, TransportError> = try {
+											let conn = TcpStream::connect(addr.clone()).await?;
+											encryption::encrypt_outgoing(conn.clone(), conn, &my_node_id, &node_id, addr).await?
 										};
-										action_sender.send(NodeAction::NetEvent(NetEvent::ConnectResponse(conn_resp))).await.unwrap();
+										action_sender.send(NodeAction::NetEvent(NetEvent::ConnectResponse(result))).await.unwrap();
 									});
 								}
 								NetAction::UserEvent(user_event) => {
@@ -100,15 +126,25 @@ impl DitherCore {
 						if let Err(err) = result { println!("NetAction error: {err}") }
 					} else { break; }
 				}
-				tcp_stream = incoming.next().fuse() => { // Listen for incoming connections
-					if let Some(Ok(tcp_stream)) = tcp_stream {
-						println!("Received new connection: {:?}", tcp_stream);
-						let addr = tcp_stream.peer_addr().unwrap();
-						let conn = Connection { addr, read: tcp_stream.clone(), write: tcp_stream };
-						if let Err(err) = node_action_sender.send(NodeAction::NetEvent(NetEvent::Incoming(conn))).await {
-							log::error!("Failed to send new Connection to Node: {}", err);
+				tcp_stream = incoming.next().fuse() => {
+					// Handle Incoming Connections
+					if let Some(tcp_stream) = tcp_stream {
+						let result: Result<Connection<DitherNet>, TransportError> = try {
+							let stream = tcp_stream?;
+							log::debug!("Received new connection: {:?}", stream.peer_addr());
+							let addr = stream.peer_addr()?;
+							encryption::encrypt_incoming(stream.clone(), stream, &my_node_id, addr).await?
+						};
+						match result {
+							Ok(conn) => {
+								if let Err(err) = node_action_sender.send(NodeAction::NetEvent(NetEvent::Incoming(conn))).await {
+									log::error!("Failed to send new Connection to Node: {err}")
+								}
+							}
+							Err(err) => log::error!("Failed to authenticate incoming connection: {err}"),
 						}
-					}
+						
+					} else { log::info!("TCP Listener closed") }
 				}
 				complete => break,
 			}

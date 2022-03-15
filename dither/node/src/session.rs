@@ -6,7 +6,7 @@ use crate::net::Network;
 
 type SessionKey = [u8; 32];
 
-#[derive(Debug, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct Session<Net: Network> {
 	session_key: SessionKey,

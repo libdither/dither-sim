@@ -3,12 +3,14 @@
 
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_std::task;
 use futures::SinkExt;
 use futures::StreamExt;
 use futures::channel::mpsc;
+use libdither::NodeAction;
 use libdither::{DitherCommand, DitherCore, Address};
 use node::NodeID;
 
@@ -58,6 +60,9 @@ async fn main() -> anyhow::Result<()> {
 						}
 						"info" => {
 							command_sender.send(DitherCommand::GetNodeInfo).await?;
+						}
+						"print" => {
+							command_sender.send(DitherCommand::NodeAction(Arc::new(NodeAction::PrintNode))).await?;
 						}
 						"action" => {
 							

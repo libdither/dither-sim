@@ -7,7 +7,7 @@ use crate::RouteScalar;
 use ::core::default::Default;
 use rkyv::{Fallible, with::{ArchiveWith, SerializeWith, DeserializeWith}};
 
-struct Skip;
+pub struct Skip;
 
 impl<F> ArchiveWith<F> for Skip {
     type Archived = ();
@@ -28,7 +28,7 @@ impl<F: Default, D: Fallible + ?Sized> DeserializeWith<(), F, D> for Skip {
     }
 }
 
-#[derive(Debug, Default, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Archive, Serialize, Deserialize)]
 pub struct PingTracker {
 	// Use a kind of slotmap but with no values
 	#[with(Skip)]
