@@ -26,12 +26,11 @@ mod types;
 mod ping;
 mod session;
 
-use remote::{Remote, RemoteAction, RemoteError, SessionInfo};
+use remote::{Remote, RemoteAction, RemoteError, RemoteHandle, SessionInfo};
 
 use slotmap::{SlotMap, new_key_type};
 
 new_key_type! { pub struct RemoteIdx; }
-
 
 /// Multihash that uniquely identifying a node (represents the Multihash of the node's Public Key)
 pub type NodeID = hashdb::Hash;
@@ -40,101 +39,34 @@ pub type RouteScalar = u64;
 /// A location in the network for routing packets
 pub type RouteCoord = (i64, i64);
 
-#[derive(Debug)]
-pub enum RemoteHandle<Net: Network> {
-	Active { 
-		shared_state: Arc<Mutex<Remote<Net>>>,
-		join: JoinHandle<Remote<Net>>,
-		sender: Sender<RemoteAction<Net>>,
-	},
-	Inactive { remote: Remote<Net> },
-}
-
-impl<Net: Network> RemoteHandle<Net> {
-	pub fn new(remote: Remote<Net>) -> Self { Self::Inactive { remote } }
-	/// Send RemoteAction to remote thread and create if thread doesn't exist.
-	async fn spawn(&mut self, node_action: &Sender<NodeAction<Net>>, connection: Connection<Net>, session_info: SessionInfo) {
-		// Safety: Self is initialized in the next line
-		// let mut ret = mem::replace(self, unsafe { MaybeUninit::uninit().assume_init() });
-		replace_with_or_abort(self, |mut ret| match ret {
-			RemoteHandle::Inactive { remote } => {
-				// Safety: Self is overwritten
-				let (join, sender) = remote.clone().spawn(node_action.clone(), connection, session_info);
-				RemoteHandle::Active { shared_state: Arc::new(Mutex::new(remote)), join, sender }
-			},
-			RemoteHandle::Active { .. } => {
-				if let RemoteHandle::Active { sender, .. } = &mut ret {
-					// Updates remote's active connection, or takes it out of bootstrapping mode
-					sender.try_send(RemoteAction::HandleConnection(connection)).unwrap();
-					sender.try_send(RemoteAction::UpdateInfo(session_info)).unwrap();
-				}
-				ret
-			},
-		});
-	}
-	async fn spawn_bootstrapping(&mut self, node_action: &Sender<NodeAction<Net>>, session_info: SessionInfo) {
-		replace_with_or_abort(self, |ret| match ret {
-			RemoteHandle::Inactive { remote } => {
-				// Safety: Self is overwritten
-				let (join, sender) = remote.clone().spawn_bootstrapping(node_action.clone(), session_info);
-				RemoteHandle::Active { shared_state: Arc::new(Mutex::new(remote)), join, sender }
-			},
-			RemoteHandle::Active { .. } => { log::error!("Tried to boostrap to node, but Remote is already active"); ret }
-		});
-	}
-	pub async fn action(&mut self, action: RemoteAction<Net>) -> Result<(), NodeError<Net>> {
-		Ok(match self {
-			RemoteHandle::Active { sender, .. } => {
-				sender.send(action).await?
-			}
-			RemoteHandle::Inactive { .. } => Err(RemoteError::SessionInactive)?
-		})
-	}
-	pub fn active(&self) -> bool { if let RemoteHandle::Active { .. } = self { true } else { false } }
-	pub async fn connect(&mut self, connection: Connection<Net>) -> Result<(), NodeError<Net>> {
-		self.action(RemoteAction::HandleConnection(connection)).await
-	}
-}
-impl<Net: Network> fmt::Display for RemoteHandle<Net> {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			RemoteHandle::Active { shared_state, .. } => {
-				let remote = task::block_on(shared_state.lock());
-				writeln!(f, "[*] {}", remote)
-			}
-			RemoteHandle::Inactive { remote } => {
-				writeln!(f, "[ ] {}", remote)
-			},
-		}
-	}
-}
-
-
 /// Actions that can be run by an external entity (either the internet implementation or the user)
 #[derive(Debug)]
 pub enum NodeAction<Net: Network> {
+	/// # User API
 
 	/// Bootstrap this node onto a specific other network node, starts the self-organization process
 	Bootstrap(NodeID, Net::Address),
-
-	/// Connect to network through passed sim::Connection
-	/// Initiate Handshake with remote NodeID, net::Addressess and initial packets
-	//Connect(net::Connection, NodeID, SessionType, Vec<NodePacket>),
-
 	/// Handle event from Internet
 	NetEvent(NetEvent<Net>),
 	/// Send Action to network implementation
 	NetAction(NetAction<Net>),
-
-	/// Send Arbitrary to Remote
+	/// Print Node info to stdout
+	PrintNode,
+	/// Send arbitrary packet to Remote
 	ForwardPacket(NodeID, NodePacket<Net>),
 
+	/// # Remote API
+
+	/// Register peer to the nearby_peers list so that route coordinates can be calculated
+	RegisterPeer(RemoteIdx, RouteCoord),
+
+	/// Send info to another node
+	SendInfo(RemoteIdx),
+
 	/// Request for Another node to ask their peers to connect to me based on peers near me.
-	RequestPeers(NodeID, Vec<((i64, i64), u32)>),
+	HandleRequestPeers(RemoteIdx, Vec<((i64, i64), u32)>),
 	/// Calculate route coordinate using Multilateration
 	CalcRouteCoord,
-	/// Send info to another node
-	SendInfo(NodeID),
 	/// Send packet to peer that wants peers
 	HandleWantPeer { requesting: NodeID, addr: Net::Address },
 
@@ -151,7 +83,6 @@ pub enum NodeAction<Net: Network> {
 	/// Send specific packet to node
 	SendData(NodeID, Vec<u8>), */
 
-	PrintNode,
 }
 
 #[derive(Error, Debug)]
@@ -264,7 +195,7 @@ impl<Net: Network> Node<Net> {
 				net_addr: addr.clone(),
 			})
 	}
-	pub fn get_or_new_remote(&mut self, node_id: NodeID, addr: &Net::Address) -> Result<&mut RemoteHandle<Net>, NodeError<Net>> {
+	/* pub fn get_or_new_remote(&mut self, node_id: NodeID, addr: &Net::Address) -> Result<(&mut RemoteHandle<Net>, SessionInfo), NodeError<Net>> {
 		let index = if self.addrs.contains_key(addr) {
 			self.index_by_addr(addr)?
 		} else {
@@ -273,12 +204,18 @@ impl<Net: Network> Node<Net> {
 			self.ids.insert(node_id, index);
 			index
 		};
-		self.remote_mut(index)
-	}
-	pub fn gen_session_info(&mut self) -> SessionInfo {
-		SessionInfo {
-			total_remotes: self.remotes.len(),
-		}
+		Ok((self.remote_mut(index)?, self.gen_session_info(index)))
+	} */
+	pub async fn gen_remote(&mut self, gen_fn: impl FnOnce(SessionInfo) -> RemoteHandle<Net>) {
+		let total_remotes = self.remotes.len();
+		let index = self.remotes.insert_with_key(|key|{
+			let session_info = SessionInfo {
+				total_remotes, remote_idx: key, is_active: false,
+			};
+			gen_fn(session_info)
+		});
+		let id = self.remotes[index].lock().await.node_id.clone();
+		self.ids.insert(id, index);
 	}
 
 	pub fn spawn(self, network_action: Sender<NetAction<Net>>) -> (JoinHandle<Node<Net>>, Sender<NodeAction<Net>>) {
@@ -301,10 +238,9 @@ impl<Net: Network> Node<Net> {
 				match action {
 					// Initiate Bootstrapping process
 					NodeAction::Bootstrap(node_id, addr) => {
-						log::debug!("Bootstrapping: {}, {}", node_id, addr);
-						let session_info = self.gen_session_info();
-						let handle = self.get_or_new_remote(node_id.clone(), &addr)?;
-						handle.spawn_bootstrapping(node_action, session_info).await; // Spawn listening for an initial connection 
+						self.gen_remote(|session_info| {
+							Remote::spawn_bootstraping(node_id.clone(), addr.clone(), node_action.clone(), session_info)
+						}).await;
 						network_action.send(NetAction::Connect(node_id, addr)).await?; // Attempt to connect
 					}
 					// Forward Net actions sent by remote
@@ -321,9 +257,9 @@ impl<Net: Network> Node<Net> {
 							},
 							// Handle unrequested connection
 							NetEvent::Incoming(conn) => {
-								let session_info = self.gen_session_info();
-								let handle = self.get_or_new_remote(conn.node_id.clone(), &conn.addr)?;
-								handle.spawn(node_action, conn, session_info).await; // Spawn node with connection
+								self.gen_remote(|session_info|{
+									Remote::spawn_incoming(conn, node_action.clone(), session_info)
+								}).await;
 							}
 							// Handle user action
 							NetEvent::UserAction(user_action) => {

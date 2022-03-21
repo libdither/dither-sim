@@ -21,10 +21,10 @@ smallvec = { version = "1.8.0", features = ["serde"] }
 bimap = { version = "0.6.2", features = ["serde"] }
 vpsearch = "2.0.1"
 thiserror = "1.0.30"
-anyhow = "1.0.55"
+anyhow = "1.0.56"
 
 # Packet Serialization
-rkyv = { version = "0.7.33", features = ["validation"] } # Zero-Copy Serialization
+rkyv = { version = "0.7.36", features = ["validation"] } # Zero-Copy Serialization
 bytecheck = "0.6.7"
 
 rand = "0.8.5"
@@ -34,6 +34,7 @@ hashdb = { git = "https://github.com/libdither/disp" }
 unsigned-varint = "0.7.1"
 rkyv_codec = "0.2.0"
 replace_with = "0.1.7"
+cupchan = "0.1.2"
 
 [lib]
 name = "node"

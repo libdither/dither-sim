@@ -1,11 +1,12 @@
 //! This is the remote module, It manages actions too and from a remote node
 //!
 
-use std::fmt;
+use std::{fmt, sync::Arc};
 
-use crate::{NodeAction, NodeID, RouteCoord, net::{Connection, Network}, packet::{PacketRead, PacketWrite, AckNodePacket, ArchivedAckNodePacket, ArchivedNodePacket, NodePacket}, ping::PingTracker, session::Session};
+use crate::{NodeAction, NodeError, NodeID, RemoteIdx, RouteCoord, net::{Connection, Network}, packet::{PacketRead, PacketWrite, AckNodePacket, ArchivedAckNodePacket, ArchivedNodePacket, NodePacket}, ping::PingTracker, session::Session};
 
-use async_std::task::{self, JoinHandle};
+use async_std::{sync::{Mutex, MutexGuard, MutexGuardArc}, task::{self, JoinHandle}};
+use cupchan::{CupchanReader, CupchanWriter};
 use futures::{
 	channel::mpsc::{self, Receiver, Sender},
 	FutureExt, SinkExt, StreamExt,
@@ -19,6 +20,55 @@ use rkyv_codec::{RkyvCodecError};
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
 	pub total_remotes: usize,
+	pub remote_idx: RemoteIdx,
+	pub is_active: bool,
+}
+
+
+#[derive(Debug)]
+pub enum RemoteHandle<Net: Network> {
+	Active { 
+		shared_state: Arc<Mutex<Remote<Net>>>,
+		join: JoinHandle<()>,
+		sender: Sender<RemoteAction<Net>>,
+		session_info_writer: CupchanWriter<SessionInfo>,
+	},
+	Inactive { remote: Arc<Mutex<Remote<Net>>> },
+}
+impl<Net: Network> RemoteHandle<Net> {
+	pub async fn action(&mut self, action: RemoteAction<Net>) -> Result<(), NodeError<Net>> {
+		Ok(match self {
+			RemoteHandle::Active { sender, .. } => {
+				sender.send(action).await?
+			}
+			RemoteHandle::Inactive { .. } => Err(RemoteError::SessionInactive)?
+		})
+	}
+	pub fn active(&self) -> bool { if let RemoteHandle::Active { .. } = self { true } else { false } }
+	pub async fn connect(&mut self, connection: Connection<Net>) -> Result<(), NodeError<Net>> {
+		self.action(RemoteAction::HandleConnection(connection)).await
+	}
+	pub async fn lock<'a>(&'a self) -> MutexGuard<'a, Remote<Net>> {
+		let mutex = match self {
+			RemoteHandle::Active { shared_state, .. } => shared_state,
+			RemoteHandle::Inactive { remote } => remote
+		};
+		mutex.lock().await
+	}
+}
+impl<Net: Network> fmt::Display for RemoteHandle<Net> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			RemoteHandle::Active { shared_state, .. } => {
+				let remote = task::block_on(shared_state.lock());
+				writeln!(f, "[*] {}", remote)
+			}
+			RemoteHandle::Inactive { remote } => {
+				let remote = task::block_on(remote.lock());
+				writeln!(f, "[ ] {}", remote)
+			},
+		}
+	}
 }
 
 /// Actions received from main thread.
@@ -50,17 +100,21 @@ pub enum RemoteError {
 
 	#[error("Node Send Error")]
 	SendError(#[from] mpsc::SendError),
+
+	#[error("Invalid NodeID for connection, expected: {expected}, found: {found}")]
+	InvalidConnection { expected: NodeID, found: NodeID }
 }
 
+/// Representation of all state needed for a direct connection with a remote
 #[derive(Debug, Clone, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct DirectRemote<Net: Network> {
-	addr: Net::Address,
-	route_coord: RouteCoord,
-	remote_count: usize,
-	considered_active: bool,
+	pub addr: Net::Address,
+	pub route_coord: RouteCoord,
+	pub remote_count: u32,
+	pub considered_active: bool,
 
-	ping_tracker: PingTracker,
+	pub ping_tracker: PingTracker,
 }
 impl<Net: Network> DirectRemote<Net> {
 	pub fn new(addr: Net::Address) -> Self {
@@ -70,6 +124,11 @@ impl<Net: Network> DirectRemote<Net> {
 			remote_count: 0,
 			considered_active: false,
 			ping_tracker: PingTracker::new(),
+		}
+	}
+	pub fn attempt_sync(&self, shared: &Arc<Mutex<Remote<Net>>>, node_id: &NodeID) {
+		if let Some(mut guard) = shared.try_lock() {
+			*guard = Remote { node_id: node_id.clone(), state: RemoteState::Direct(self.clone()) };
 		}
 	}
 	// Send packet as acknowledgement
@@ -93,106 +152,6 @@ impl<Net: Network> DirectRemote<Net> {
 		};
 		Ok(writer.write_packet(&packet).await?)
 	}
-
-	#[allow(unused_variables)]
-	async fn handle_connection(
-		&mut self,
-		self_node_id: NodeID,
-		mut action_receiver: Receiver<RemoteAction<Net>>,
-		mut reader: PacketRead<Net>,
-		mut writer: PacketWrite<Net>,
-		mut node_action: Sender<NodeAction<Net>>,
-		address: Net::Address,
-		mut session_info: SessionInfo,
-	) {
-		if self.addr != address {
-			log::info!("Remote {} changed IP from {} to {}", self_node_id, self.addr, address);
-			self.addr = address;
-		}
-		loop {
-			futures::select! {
-				// Receive Actions
-				action = action_receiver.next() => {
-					if let Some(action) = action {
-						log::debug!("Remote {} received action: {:?}", self.addr, action);
-						match action {
-							RemoteAction::Bootstrap => {
-								self.send_packet(&mut writer, &NodePacket::Bootstrap { requester: self_node_id.clone() }, true).await.unwrap();
-							}
-							RemoteAction::SendPacket(packet) => {
-								self.send_packet(&mut writer, &packet, true).await.unwrap();
-							}
-							RemoteAction::HandleConnection(connection) => {
-								if let Some((addr, reader_new, writer_new)) = NodePacket::create_codec(connection, &self_node_id) {
-									reader = reader_new; writer = writer_new;
-									log::info!("Remote {} switched connection to: {}", self_node_id, addr);
-								} else {
-									log::error!("Received new connection, but was from wrong NodeID");
-								}
-								
-							},
-							RemoteAction::UpdateInfo(info) => session_info = info,
-							_ => log::error!("Unsupported Remote Action in inactive state: {:?}", action),
-						}
-					}
-				}
-				// Receive Node Packets
-				packet = reader.read_packet().fuse() => {
-					let ret: Result<(), RemoteError> = try {
-						let ArchivedAckNodePacket { packet, packet_id, should_ack, acknowledging } = packet?;
-						// Register acknowledgement
-						if let ArchivedOption::Some(unique_id) = acknowledging { self.ping_tracker.return_unique_id(*unique_id); }
-
-						log::debug!("Received packet from {}: {:?} [{},{},{:?}]", self.addr, packet, packet_id, should_ack, acknowledging);
-						match packet {
-							// If receive Bootstrap Request, send Info packet
-							ArchivedNodePacket::Bootstrap { requester } => {
-								self.send_ack(&mut writer, *packet_id, &NodePacket::Info {
-									route_coord: self.route_coord,
-									active_peers: session_info.total_remotes,
-								}).await?;
-							},
-							ArchivedNodePacket::Info { route_coord, active_peers } => {
-								if *should_ack { self.send_ack(&mut writer, *packet_id, &NodePacket::Ack).await?; }
-							},
-							ArchivedNodePacket::RequestPeers { nearby } => {
-								node_action.send(NodeAction::RequestPeers(self_node_id.clone(), nearby.deserialize(&mut Infallible).unwrap())).await?;
-							},
-							ArchivedNodePacket::WantPeer { requesting, addr } => {
-								node_action.send(NodeAction::HandleWantPeer { requesting: requesting.clone(), addr: addr.deserialize(&mut Infallible).unwrap() }).await?;
-							},
-							ArchivedNodePacket::WantPeerResp { prompting_node } => {
-								if *should_ack { self.send_ack(&mut writer, *packet_id, &NodePacket::Ack).await?; }
-							}
-							ArchivedNodePacket::Notify { active } => {
-								if *should_ack { self.send_ack(&mut writer, *packet_id, &NodePacket::Ack).await?; } // TODO: Send back Notify packet instead of Ack
-								self.considered_active = *active;
-							}
-							ArchivedNodePacket::Ack => {
-								if *should_ack { self.send_ack(&mut writer, *packet_id, &NodePacket::Ack).await?; }
-							},
-							
-							ArchivedNodePacket::Data(data) => log::info!("Received data: {}", String::from_utf8_lossy(data)),
-							ArchivedNodePacket::Traversal { destination, session_packet } => todo!(),
-							ArchivedNodePacket::Return { packet, origin } => todo!(),
-						}
-					};
-					if let Err(err) = ret {
-						match err {
-							RemoteError::CodecError(RkyvCodecError::IoError(io_error)) => {
-								match io_error.kind() {
-									std::io::ErrorKind::UnexpectedEof => log::info!("Remote {} disconnected", self_node_id),
-									_ => log::error!("Remote {} I/O error: {}", self_node_id, io_error)
-								}
-							}
-							_ => log::error!("Remote {} error: {}", self_node_id, err),
-						}
-						 break;
-					}
-				}
-			}
-		}
-	}
 }
 
 #[derive(Debug, Clone, Archive, Serialize, Deserialize)]
@@ -200,20 +159,26 @@ impl<Net: Network> DirectRemote<Net> {
 pub enum RemoteState<Net: Network> {
 	// Node is directly connected
 	Direct(DirectRemote<Net>),
-	// Node is connected through other nodes
+	// Node communicates with remote by traversing packets through the network
 	Traversed { route_coord: RouteCoord },
 	Routed { routes: Vec<(RouteCoord, NodeID)> },
+}
+
+// All ephemeral data needed to communicate data to a node
+#[derive(Debug)]
+pub enum RemoteConnection<Net: Network> {
+	Direct(Connection<Net>),
+	Traversed, // only need Node info
+	Routed(Vec<u128>) // Represents temporary encryption keys
 }
 
 #[derive(Debug, Clone, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct Remote<Net: Network> {
 	/// Unique NodeID of the remote
-	node_id: NodeID,
+	pub node_id: NodeID,
 	/// State of this node
-	state: RemoteState<Net>,
-	/// Current encrypted session details
-	session: Option<Session<Net>>,
+	pub state: RemoteState<Net>,
 }
 
 impl<Net: Network> Remote<Net> {
@@ -221,89 +186,218 @@ impl<Net: Network> Remote<Net> {
 		Remote {
 			node_id,
 			state: RemoteState::Direct(DirectRemote::new(addr)),
-			session: None,
 		}
 	}
 	pub fn new_traversed(node_id: NodeID, route_coord: RouteCoord) -> Remote<Net> {
 		Remote {
 			node_id,
 			state: RemoteState::Traversed { route_coord },
-			session: None,
 		}
 	}
-	pub fn spawn_bootstrapping(
-		self,
-		node_action: Sender<NodeAction<Net>>,
-		session_info: SessionInfo,
-	) -> (JoinHandle<Self>, Sender<RemoteAction<Net>>) {
-		let (tx, mut rx) = mpsc::channel(20);
+	/// Create codec 
+	pub fn create_codec(connection: Connection<Net>, self_node_id: &NodeID) -> Result<(Net::Address, PacketRead<Net>, PacketWrite<Net>), RemoteError> {
+		let Connection { node_id, addr, read, write } = connection;
+		if node_id == *self_node_id {
+			Ok((addr, PacketRead::new(read), PacketWrite::new(write)))
+		} else {
+			Err(RemoteError::InvalidConnection { expected: self_node_id.clone(), found: node_id })
+		}
+	}
+
+	/// Spawn a remote handler that waits for a connection and bootstraps onto the network off of the remote
+	pub fn spawn_bootstraping(
+		node_id: NodeID,
+		addr: Net::Address,
+		mut node_action: Sender<NodeAction<Net>>,
+		session_info_initial: SessionInfo,
+	) -> RemoteHandle<Net> {
+		let this = Self::new_direct(node_id.clone(), addr.clone());
+		let shared = Arc::new(Mutex::new(this.clone()));
+		let (tx, mut action_receiver) = mpsc::channel(20);
+
+		node_action.try_send(NodeAction::NetAction(crate::net::NetAction::Connect(node_id, addr))).unwrap();
+
+		let (session_info_writer, session_info_reader) = cupchan::cupchan(session_info_initial);
 
 		let mut initial_action_sender = tx.clone();
+		let shared_state = shared.clone();
 		let join = task::spawn(async move {
 			loop {
-				match rx.next().await {
+				let action  = action_receiver.next().await;
+				match action {
 					Some(RemoteAction::HandleConnection(connection)) => {
-						if let Some((addr, reader, writer)) = NodePacket::create_codec(connection, &self.node_id) {
-							initial_action_sender.send(RemoteAction::Bootstrap).await.unwrap();
-							break self.run(rx, reader, writer, node_action, addr, session_info).await
-						} else {
-							log::error!("Received connection, but NodeID did not match");
-							break self
-						}
+						let connection = RemoteConnection::Direct(connection);
+						initial_action_sender.send(RemoteAction::Bootstrap).await.unwrap();
+						this.run(action_receiver, node_action, connection, session_info_reader, shared).await;
+						break
 					}
 					Some(action) => log::warn!("Received: {:?} in bootstrapping mode", action),
-					None => { log::info!("RemoteNode shutting down (was in bootstrapping mode)"); break self }
+					None => { log::info!("RemoteNode shutting down (was in bootstrapping mode)") }
 				}
 			}
-			
 		});
-		(join, tx)
+		RemoteHandle::Active { join, sender: tx, shared_state, session_info_writer }
 	}
-	// Run remote action event loop. Consumes itself, should be run on independent thread
-	pub fn spawn(
-		self,
-		node_action: Sender<NodeAction<Net>>,
+	/// Spawn a new remote handler from an incoming connection
+	pub fn spawn_incoming(
 		connection: Connection<Net>,
-		session_info: SessionInfo,
-	) -> (JoinHandle<Self>, Sender<RemoteAction<Net>>) {
-		let (tx, rx) = mpsc::channel(20);
-
-		let join = task::spawn(async {
-			if let Some((addr, reader, writer)) = NodePacket::create_codec(connection, &self.node_id) {
-				self.run(rx, reader, writer, node_action, addr, session_info).await
-			} else {
-				self
-			}
-		});
-		
-		(join, tx)
-		
+		node_action: mpsc::Sender<NodeAction<Net>>,
+		initial_session_info: SessionInfo,
+	) -> RemoteHandle<Net> {
+		let remote = Remote::new_direct(connection.node_id.clone(), connection.addr.clone());
+		let shared = Arc::new(Mutex::new(remote));
+		Remote::spawn_shared(shared, node_action, RemoteConnection::Direct(connection), initial_session_info)
 	}
+
+	/// Spawn a remote handler from a Arc<Mutex<Self>> and a RemoteConnection
+	pub fn spawn_shared(
+		shared: Arc<Mutex<Self>>,
+		node_action: mpsc::Sender<NodeAction<Net>>,
+		connection: RemoteConnection<Net>,
+		initial_session_info: SessionInfo,
+	) -> RemoteHandle<Net> {
+		let (action_sender, action_receiver) = mpsc::channel(20);
+		let (session_info_writer, session_info_reader) = cupchan::cupchan(initial_session_info);
+
+		let shared_state = shared.clone();
+		let join = task::spawn(async move {
+			let state = shared.lock().await.clone();
+			state.run(action_receiver, node_action, connection, session_info_reader, shared).await
+		});
+		RemoteHandle::Active { join, sender: action_sender, shared_state, session_info_writer }
+	}
+
+	// Run remote action event loop. Consumes itself, should be run on independent thread
+	/* fn spawn(
+		self, // Shared state
+		node_action: Sender<NodeAction<Net>>, // 
+		connection: RemoteConnection<Net>,
+		initial_session_info: SessionInfo,
+		shared_state: Arc<Mutex<Self>>,
+	) -> RemoteHandle<Net> {
+		let (action_sender, action_receiver) = mpsc::channel(20);
+		let (session_info_writer, session_info_reader) = cupchan::cupchan(initial_session_info);
+
+		RemoteHandle::Active { join: task::spawn(async {
+			self.run(action_receiver, node_action, connection, session_info_reader, shared_state.clone()).await;
+		}), sender: action_sender, shared_state, session_info_writer }
+	} */
 	/// Handle active session
 	#[allow(unused_variables)]
 	async fn run(
 		mut self,
-		action_receiver: Receiver<RemoteAction<Net>>,
-		reader: PacketRead<Net>,
-		writer: PacketWrite<Net>,
-		node_action: Sender<NodeAction<Net>>,
-		address: Net::Address,
-		session_info: SessionInfo,
-	) -> Self {
-		match &mut self.state {
-			// Deal with direct connection
-			RemoteState::Direct(direct) => {
-				direct.handle_connection(self.node_id.clone(), action_receiver, reader, writer, node_action, address, session_info).await;
+		mut action_receiver: Receiver<RemoteAction<Net>>, // Receive actions from Node
+		mut node_action: Sender<NodeAction<Net>>, // Send actions to node
+		connection: RemoteConnection<Net>, // ephemeral data used to communicate with remote (i.e. packet writer, session keys)
+		session_info_reader: CupchanReader<SessionInfo>, // Externally updated state storing immediately-accessible info about node.
+		shared: Arc<Mutex<Self>>, // Shared state with node.
+	) {
+		let Remote { node_id: self_node_id, state } = &mut self;
+		// let self_node_id = & self.node_id;
+		// let state = &mut self.state;
+		let result: Result<(), RemoteError> = try {
+			match (state, connection) {
+				// Deal with direct connection
+				(RemoteState::Direct(direct), RemoteConnection::Direct(conn)) => {
+					let (addr, mut reader, mut writer) = Remote::create_codec(conn, &self_node_id)?;
+					
+					// Direct loop
+					loop { futures::select! {
+						// Receive Actions
+						action = action_receiver.next() => {
+							let action = if let Some(action) = action { action } else { continue };
+							let result: Result<(), RemoteError> = try {
+								log::debug!("Remote {} received action: {:?}", direct.addr, action);
+								match action {
+									RemoteAction::Bootstrap => {
+										direct.send_packet(&mut writer,
+											&NodePacket::Bootstrap { requester: self_node_id.clone() },
+										true).await.unwrap();
+									}
+									RemoteAction::SendPacket(packet) => {
+										direct.send_packet(&mut writer, &packet, true).await.unwrap();
+									}
+									RemoteAction::HandleConnection(connection) => {
+										let (addr, reader_new, writer_new) = Remote::create_codec(connection, &self_node_id)?;
+										reader = reader_new; writer = writer_new;
+									},
+									_ => log::error!("Unsupported Remote Action in inactive state: {:?}", action),
+								}
+							};
+						}
+						// Receive Node Packets
+						packet = reader.read_packet().fuse() => {
+							let ret: Result<(), RemoteError> = try {
+								let ArchivedAckNodePacket { packet, packet_id, should_ack, acknowledging } = packet?;
+								// Register acknowledgement
+								if let ArchivedOption::Some(unique_id) = acknowledging { direct.ping_tracker.return_unique_id(*unique_id); }
+		
+								log::debug!("Received packet from {}: {:?} [{},{},{:?}]", direct.addr, packet, packet_id, should_ack, acknowledging);
+								match packet {
+									// If receive Bootstrap Request, send Info packet
+									ArchivedNodePacket::Bootstrap { requester } => {
+										let session_info = &*session_info_reader;
+										direct.send_ack(&mut writer, *packet_id, &NodePacket::Info {
+											route_coord: direct.route_coord,
+											active_peers: session_info.total_remotes,
+											active: session_info.is_active,
+											prompting_node: Some(requester.clone()),
+										}).await?;
+									},
+									ArchivedNodePacket::Info { route_coord, active_peers, active, prompting_node: _ } => {
+										if *should_ack { direct.send_ack(&mut writer, *packet_id, &NodePacket::Ack).await?; }
+										direct.route_coord = *route_coord;
+										direct.remote_count = *active_peers;
+										direct.considered_active = *active;
+		
+										// TODO: deal with prompting_node (figure out if it is even necessary)
+										node_action.send(NodeAction::RegisterPeer(session_info_reader.remote_idx, route_coord.clone())).await?;
+										direct.attempt_sync(&shared, self_node_id);
+									},
+									ArchivedNodePacket::RequestPeers { nearby } => {
+										node_action.send(NodeAction::HandleRequestPeers(session_info_reader.remote_idx, nearby.deserialize(&mut Infallible).unwrap())).await?;
+									},
+									ArchivedNodePacket::WantPeer { requesting, addr } => {
+										node_action.send(NodeAction::HandleWantPeer { requesting: requesting.clone(), addr: addr.deserialize(&mut Infallible).unwrap() }).await?;
+									},
+									ArchivedNodePacket::Ack => {
+										if *should_ack { direct.send_ack(&mut writer, *packet_id, &NodePacket::Ack).await?; }
+									},
+									
+									ArchivedNodePacket::Data(data) => log::info!("Received data: {}", String::from_utf8_lossy(data)),
+									ArchivedNodePacket::Traversal { destination, session_packet } => todo!(),
+									ArchivedNodePacket::Return { packet, origin } => todo!(),
+								}
+							};
+							
+						}
+						complete => break,
+					}}
+				}
+				// Deal with a Traversed connection
+				(RemoteState::Traversed { route_coord }, RemoteConnection::Traversed) => {
+					/* while let Some(action) = action_receiver.next().await {
+						node_action.send(NodeAction::SendTraversed())
+					} */
+				}
+				(RemoteState::Routed { routes }, RemoteConnection::Routed(keys)) => {},
+				_ => {log::error!("Invalid remote state for connection type")},
+			};
+		};
+		if let Err(err) = result {
+			match err {
+				RemoteError::CodecError(RkyvCodecError::IoError(io_error)) => {
+					match io_error.kind() {
+						std::io::ErrorKind::UnexpectedEof => log::info!("Remote {} disconnected", self.node_id),
+						_ => log::error!("Remote {} I/O error: {}", self.node_id, io_error)
+					}
+				}
+				_ => log::error!("Remote {} error: {}", self.node_id, err),
 			}
-			// Deal with a Traversed connection
-			RemoteState::Traversed { route_coord } => {
-				/* while let Some(action) = action_receiver.next().await {
-					node_action.send(NodeAction::SendTraversed())
-				} */
-			}
-			RemoteState::Routed { routes } => {}
 		}
-		self
+		// Make sure to sync to shared state
+		let mut guard = shared.lock().await;
+		*guard = self.clone();
 	}
 }
 

@@ -35,6 +35,8 @@ pub enum NodePacket<Net: Network> {
 	Info {
 		route_coord: RouteCoord,
 		active_peers: usize,
+		active: bool,
+		prompting_node: Option<NodeID>,
 	},
 
 	/// Request a certain number of another node's peers that are closest to this node to make themselves known
@@ -46,14 +48,6 @@ pub enum NodePacket<Net: Network> {
 	WantPeer {
 		requesting: NodeID,
 		addr: Net::Address
-	},
-
-	WantPeerResp {
-		prompting_node: NodeID,
-	},
-
-	Notify {
-		active: bool,
 	},
 
 	/// `Ack` packet
@@ -83,12 +77,6 @@ where <Net::Address as Archive>::Archived: Deserialize<Net::Address, Infallible>
 	pub fn from_archive(archive: &Archived<NodePacket<Net>>) -> Self
 	{
 		Deserialize::<NodePacket<Net>, Infallible>::deserialize(archive, &mut Infallible).unwrap()
-	}
-	pub fn create_codec(connection: Connection<Net>, known_node_id: &NodeID) -> Option<(Net::Address, PacketRead<Net>, PacketWrite<Net>)> {
-		let Connection { node_id, addr, read, write } = connection;
-		if node_id == *known_node_id {
-			Some((addr, PacketRead::new(read), PacketWrite::new(write)))
-		} else { None }
 	}
 }
 

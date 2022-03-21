@@ -27,3 +27,5 @@ path = "src/lib.rs"
 [[bin]]
 name = "dither"
 path = "src/bin.rs"
+
+[features]

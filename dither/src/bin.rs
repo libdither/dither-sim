@@ -24,7 +24,9 @@ async fn send_node_action(command_sender: &mut mpsc::Sender<DitherCommand>, acti
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
-	env_logger::init();
+	env_logger::builder()
+    .format_timestamp(None)
+    .init();
 	
 	let listen_port: u16 = match std::env::args().nth(1).map(|s|s.parse()) {
 		Some(Ok(port)) => port,
@@ -48,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
 			println!("{:?}", event);
 		}
 	});
-	
+
 	loop {
         let readline = rl.readline("> ");
         match readline {
