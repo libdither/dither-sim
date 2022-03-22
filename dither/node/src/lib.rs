@@ -6,17 +6,18 @@
 #![feature(arbitrary_self_types)]
 #![feature(generic_associated_types)]
 #![feature(associated_type_bounds)]
+#![feature(map_first_last)]
 
 #[macro_use]
 extern crate thiserror;
 
-use async_std::{sync::Mutex, task::{self, JoinHandle}};
+use async_std::{task::{self, JoinHandle}};
 use futures::{SinkExt, StreamExt, channel::mpsc::{self, Receiver, Sender}};
-use replace_with::replace_with_or_abort;
+use nalgebra::Vector2;
 
-use std::{collections::{BTreeMap, HashMap}, fmt, sync::Arc, time::Instant};
+use std::{collections::{BTreeMap, HashMap}, fmt, time::Instant};
 
-use net::{Connection, NetAction, NetEvent, Network, UserAction, UserEvent};
+use net::{NetAction, NetEvent, Network, UserAction, UserEvent};
 pub use packet::NodePacket;
 
 pub mod net;
@@ -26,9 +27,9 @@ mod types;
 mod ping;
 mod session;
 
-use remote::{Remote, RemoteAction, RemoteError, RemoteHandle, SessionInfo};
+use remote::{Remote, RemoteAction, RemoteError, RemoteHandle, NodeSessionInfo};
 
-use slotmap::{SlotMap, new_key_type};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 new_key_type! { pub struct RemoteIdx; }
 
@@ -37,7 +38,7 @@ pub type NodeID = hashdb::Hash;
 /// Coordinate that represents a position of a node relative to other nodes in 2D space.
 pub type RouteScalar = u64;
 /// A location in the network for routing packets
-pub type RouteCoord = (i64, i64);
+pub type RouteCoord = Vector2<i64>;
 
 /// Actions that can be run by an external entity (either the internet implementation or the user)
 #[derive(Debug)]
@@ -64,7 +65,7 @@ pub enum NodeAction<Net: Network> {
 	SendInfo(RemoteIdx),
 
 	/// Request for Another node to ask their peers to connect to me based on peers near me.
-	HandleRequestPeers(RemoteIdx, Vec<((i64, i64), u32)>),
+	HandleRequestPeers(RemoteIdx, Vec<(RouteCoord, u32)>),
 	/// Calculate route coordinate using Multilateration
 	CalcRouteCoord,
 	/// Send packet to peer that wants peers
@@ -145,7 +146,10 @@ pub struct Node<Net: Network> {
 	//#[serde(skip)]
 	addrs: HashMap<Net::Address, RemoteIdx>,
 
-	/// Sorted list of nodes based on how close they are latency-wise
+	route_map: SecondaryMap<RemoteIdx, RouteCoord>,
+
+	active: Vec<RemoteIdx>,
+	/// Sorted list of nodes based on how close they are latency-wise, values are squared distances
 	direct_sorted: BTreeMap<u64, RemoteIdx>, // All nodes that have been tested, sorted by lowest value
 }
 
@@ -166,6 +170,8 @@ impl<Net: Network> Node<Net> {
 			ids: Default::default(),
 			addrs: Default::default(),
 			direct_sorted: Default::default(),
+			route_map: Default::default(),
+			active: Default::default(),
 		}
 	}
 
@@ -195,21 +201,10 @@ impl<Net: Network> Node<Net> {
 				net_addr: addr.clone(),
 			})
 	}
-	/* pub fn get_or_new_remote(&mut self, node_id: NodeID, addr: &Net::Address) -> Result<(&mut RemoteHandle<Net>, SessionInfo), NodeError<Net>> {
-		let index = if self.addrs.contains_key(addr) {
-			self.index_by_addr(addr)?
-		} else {
-			let index = self.remotes.insert(RemoteHandle::new(Remote::new_direct(node_id.clone(), addr.clone())));
-			self.addrs.insert(addr.clone(), index);
-			self.ids.insert(node_id, index);
-			index
-		};
-		Ok((self.remote_mut(index)?, self.gen_session_info(index)))
-	} */
-	pub async fn gen_remote(&mut self, gen_fn: impl FnOnce(SessionInfo) -> RemoteHandle<Net>) {
+	pub async fn gen_remote(&mut self, gen_fn: impl FnOnce(NodeSessionInfo) -> RemoteHandle<Net>) {
 		let total_remotes = self.remotes.len();
 		let index = self.remotes.insert_with_key(|key|{
-			let session_info = SessionInfo {
+			let session_info = NodeSessionInfo {
 				total_remotes, remote_idx: key, is_active: false,
 			};
 			gen_fn(session_info)
@@ -241,7 +236,20 @@ impl<Net: Network> Node<Net> {
 						self.gen_remote(|session_info| {
 							Remote::spawn_bootstraping(node_id.clone(), addr.clone(), node_action.clone(), session_info)
 						}).await;
-						network_action.send(NetAction::Connect(node_id, addr)).await?; // Attempt to connect
+					}
+					NodeAction::RegisterPeer(remote_idx, route_coord) => {
+						self.route_map.insert(remote_idx, route_coord);
+						let farthest_coord = self.direct_sorted.last_entry();
+						let diff = self.route_coord - route_coord;
+						let new_dist = (diff.x * diff.x + diff.y * diff.y) as u64;
+						if let Some(farthest_coord) = farthest_coord {
+							if new_dist < *farthest_coord.key() {
+								self.direct_sorted.pop_last();
+								self.direct_sorted.insert(new_dist, remote_idx);
+							}
+						} else {
+							self.direct_sorted.insert(new_dist, remote_idx);
+						}
 					}
 					// Forward Net actions sent by remote
 					NodeAction::NetAction(net_action) => network_action.send(net_action).await?,
@@ -282,6 +290,13 @@ impl<Net: Network> Node<Net> {
 						}
 					},
 					NodeAction::PrintNode => {
+						// Sync all remotes
+						for (_, handle) in &mut self.remotes {
+							let _ = handle.action(RemoteAction::AttemptSync).await;
+						}
+						// Wait a brief time for sync
+						async_std::task::sleep(std::time::Duration::from_millis(1)).await;
+						// Print
 						println!("{}", self);
 					},
 					NodeAction::ForwardPacket(node_id, packet) => {
@@ -321,6 +336,7 @@ impl<Net: Network> fmt::Display for Node<Net> {
 		writeln!(f, "	public_addr: {:?}", self.public_addr)?;
 		writeln!(f, "	route_coord: {:?}", self.route_coord)?;
 		writeln!(f, "	total_nodes: {:?}", self.remotes.len())?;
+		writeln!(f, "	direct_sorted: {:?}", self.direct_sorted)?;
 		// writeln!(f, "start_time: {}", self.start_time)?;
 		for (idx, remote) in &self.remotes {
 			write!(f, "	{:?} {}", idx, remote)?;

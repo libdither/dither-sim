@@ -3,9 +3,9 @@
 
 use std::{fmt, sync::Arc};
 
-use crate::{NodeAction, NodeError, NodeID, RemoteIdx, RouteCoord, net::{Connection, Network}, packet::{PacketRead, PacketWrite, AckNodePacket, ArchivedAckNodePacket, ArchivedNodePacket, NodePacket}, ping::PingTracker, session::Session};
+use crate::{NodeAction, NodeError, NodeID, RemoteIdx, RouteCoord, net::{Connection, Network}, packet::{PacketRead, PacketWrite, AckNodePacket, ArchivedAckNodePacket, ArchivedNodePacket, NodePacket}, ping::PingTracker};
 
-use async_std::{sync::{Mutex, MutexGuard, MutexGuardArc}, task::{self, JoinHandle}};
+use async_std::{sync::{Mutex, MutexGuard}, task::{self, JoinHandle}};
 use cupchan::{CupchanReader, CupchanWriter};
 use futures::{
 	channel::mpsc::{self, Receiver, Sender},
@@ -18,7 +18,7 @@ use rkyv_codec::{RkyvCodecError};
 
 // Info stored by the node for the current session
 #[derive(Debug, Clone)]
-pub struct SessionInfo {
+pub struct NodeSessionInfo {
 	pub total_remotes: usize,
 	pub remote_idx: RemoteIdx,
 	pub is_active: bool,
@@ -31,7 +31,7 @@ pub enum RemoteHandle<Net: Network> {
 		shared_state: Arc<Mutex<Remote<Net>>>,
 		join: JoinHandle<()>,
 		sender: Sender<RemoteAction<Net>>,
-		session_info_writer: CupchanWriter<SessionInfo>,
+		session_info_writer: CupchanWriter<NodeSessionInfo>,
 	},
 	Inactive { remote: Arc<Mutex<Remote<Net>>> },
 }
@@ -84,7 +84,9 @@ pub enum RemoteAction<Net: Network> {
 	RouteCoordQuery(RouteCoord),
 
 	/// Used by the main node to notify remote threads of any updated info
-	UpdateInfo(SessionInfo),
+	UpdateInfo(NodeSessionInfo),
+
+	AttemptSync,
 
 	GetRemoteInfo,
 }
@@ -209,7 +211,7 @@ impl<Net: Network> Remote<Net> {
 		node_id: NodeID,
 		addr: Net::Address,
 		mut node_action: Sender<NodeAction<Net>>,
-		session_info_initial: SessionInfo,
+		session_info_initial: NodeSessionInfo,
 	) -> RemoteHandle<Net> {
 		let this = Self::new_direct(node_id.clone(), addr.clone());
 		let shared = Arc::new(Mutex::new(this.clone()));
@@ -242,7 +244,7 @@ impl<Net: Network> Remote<Net> {
 	pub fn spawn_incoming(
 		connection: Connection<Net>,
 		node_action: mpsc::Sender<NodeAction<Net>>,
-		initial_session_info: SessionInfo,
+		initial_session_info: NodeSessionInfo,
 	) -> RemoteHandle<Net> {
 		let remote = Remote::new_direct(connection.node_id.clone(), connection.addr.clone());
 		let shared = Arc::new(Mutex::new(remote));
@@ -254,7 +256,7 @@ impl<Net: Network> Remote<Net> {
 		shared: Arc<Mutex<Self>>,
 		node_action: mpsc::Sender<NodeAction<Net>>,
 		connection: RemoteConnection<Net>,
-		initial_session_info: SessionInfo,
+		initial_session_info: NodeSessionInfo,
 	) -> RemoteHandle<Net> {
 		let (action_sender, action_receiver) = mpsc::channel(20);
 		let (session_info_writer, session_info_reader) = cupchan::cupchan(initial_session_info);
@@ -272,7 +274,7 @@ impl<Net: Network> Remote<Net> {
 		self, // Shared state
 		node_action: Sender<NodeAction<Net>>, // 
 		connection: RemoteConnection<Net>,
-		initial_session_info: SessionInfo,
+		initial_session_info: NodeSessionInfo,
 		shared_state: Arc<Mutex<Self>>,
 	) -> RemoteHandle<Net> {
 		let (action_sender, action_receiver) = mpsc::channel(20);
@@ -289,7 +291,7 @@ impl<Net: Network> Remote<Net> {
 		mut action_receiver: Receiver<RemoteAction<Net>>, // Receive actions from Node
 		mut node_action: Sender<NodeAction<Net>>, // Send actions to node
 		connection: RemoteConnection<Net>, // ephemeral data used to communicate with remote (i.e. packet writer, session keys)
-		session_info_reader: CupchanReader<SessionInfo>, // Externally updated state storing immediately-accessible info about node.
+		session_info_reader: CupchanReader<NodeSessionInfo>, // Externally updated state storing immediately-accessible info about node.
 		shared: Arc<Mutex<Self>>, // Shared state with node.
 	) {
 		let Remote { node_id: self_node_id, state } = &mut self;
@@ -321,6 +323,9 @@ impl<Net: Network> Remote<Net> {
 										let (addr, reader_new, writer_new) = Remote::create_codec(connection, &self_node_id)?;
 										reader = reader_new; writer = writer_new;
 									},
+									RemoteAction::AttemptSync => {
+										direct.attempt_sync(&shared, &self_node_id);
+									}
 									_ => log::error!("Unsupported Remote Action in inactive state: {:?}", action),
 								}
 							};

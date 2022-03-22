@@ -1676,7 +1676,7 @@ dependencies = [
  "iced_graphics",
  "libdither",
  "log",
- "nalgebra",
+ "nalgebra 0.30.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "petgraph 0.6.0",
  "rand",
  "ron",
@@ -2379,10 +2379,27 @@ checksum = "4fb2d0de08694bed883320212c18ee3008576bfe8c306f4c3c4a58b4876998be"
 dependencies = [
  "approx",
  "matrixmultiply",
- "nalgebra-macros",
+ "nalgebra-macros 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-complex",
  "num-rational",
  "num-traits",
+ "simba",
+ "typenum",
+]
+
+[[package]]
+name = "nalgebra"
+version = "0.30.1"
+source = "git+https://github.com/zyansheep/nalgebra#62134a193e3080bd19277a68d606fb99441a5071"
+dependencies = [
+ "approx",
+ "bytecheck",
+ "matrixmultiply",
+ "nalgebra-macros 0.1.0 (git+https://github.com/zyansheep/nalgebra)",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "rkyv",
  "serde",
  "simba",
  "typenum",
@@ -2393,6 +2410,16 @@ name = "nalgebra-macros"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01fcc0b8149b4632adc89ac3b7b31a12fb6099a0317a4eb2ebff574ef7de7218"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "nalgebra-macros"
+version = "0.1.0"
+source = "git+https://github.com/zyansheep/nalgebra#62134a193e3080bd19277a68d606fb99441a5071"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2621,7 +2648,7 @@ dependencies = [
  "futures-core",
  "hashdb",
  "log",
- "nalgebra",
+ "nalgebra 0.30.1 (git+https://github.com/zyansheep/nalgebra)",
  "petgraph 0.6.0",
  "rand",
  "replace_with",
@@ -3514,7 +3541,7 @@ dependencies = [
  "futures-delay-queue",
  "futures-intrusive",
  "log",
- "nalgebra",
+ "nalgebra 0.30.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "netsim-embed",
  "netsim-embed-machine 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "node",

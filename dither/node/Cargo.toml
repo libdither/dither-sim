@@ -14,7 +14,7 @@ futures = "0.3.21"
 # Data
 log = "0.4.14"
 derivative = "2.2.0"
-nalgebra = { version = "0.30.1", features = ["serde-serialize"] }
+nalgebra = { git = "https://github.com/zyansheep/nalgebra", features = ["serde-serialize", "rkyv-serialize"] }
 petgraph = { version = "0.6.0", features = ["graphmap", "serde-1"] }
 slotmap = { version = "1.0.6", features = ["serde"] }
 smallvec = { version = "1.8.0", features = ["serde"] }

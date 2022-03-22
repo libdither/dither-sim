@@ -7,7 +7,7 @@ use futures::SinkExt;
 use rkyv::{AlignedVec, Archive, Archived, Deserialize, Infallible, Serialize, with::Inline};
 use rkyv_codec::{RkyvCodecError, RkyvWriter, VarintLength, archive_stream};
 
-use crate::{net::{Connection, Network}};
+use crate::net::Network;
 use super::{NodeID, RouteCoord};
 
 /// Acknowledging node packet
