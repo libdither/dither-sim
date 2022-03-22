@@ -1,7 +1,5 @@
 //! This is the Node Module, it defines all the behaviours of a Dither Node.
 //! It provides a simple API to the internet module containing it.
-#![allow(dead_code)]
-
 #![feature(try_blocks)]
 #![feature(arbitrary_self_types)]
 #![feature(generic_associated_types)]
@@ -89,31 +87,25 @@ pub enum NodeAction<Net: Network> {
 #[derive(Error, Debug)]
 pub enum NodeError<Net: Network> {
 	// Error from Remote Node Thread
-	#[error("Remote Error: {0}")]
+	#[error("remote: {0}")]
 	RemoteError(#[from] RemoteError),
-	#[error("Connection error: {0}")]
+	#[error("connection: {0}")]
 	ConnectionError(Net::ConnectionError),
 	
-	#[error("Failed to send message")]
+	#[error("failed to send message")]
 	SendError(#[from] mpsc::SendError),
 
 	// When Accessing Remotes
-	#[error("Unknown Node Index: {node_idx:?}")]
+	#[error("unknown node index: {node_idx:?}")]
 	UnknownNodeIndex { node_idx: RemoteIdx },
-	#[error("Unknown NodeID: {node_id:?}")]
+	#[error("unknown NodeID: {node_id:?}")]
 	UnknownNodeID { node_id: NodeID },
-	#[error("Unknown Network Addr: {net_addr:?}")]
+	#[error("unknown Net::Address: {net_addr:?}")]
 	UnknownNetAddr { net_addr: Net::Address },
-
-	#[error("There is no calculated route coordinate for this node")]
-	NoCalculatedRouteCoord,
-	#[error("There are not enough peers, needed: {required}")]
-	InsufficientPeers { required: usize },
 
 	// Catch-all
 	#[error(transparent)]
 	Other(#[from] anyhow::Error),
-
 }
 impl<Net: Network> NodeError<Net> {
 	pub fn anyhow(self) -> NodeError<Net> {
@@ -341,7 +333,7 @@ impl<Net: Network> fmt::Display for Node<Net> {
 		for (idx, remote) in &self.remotes {
 			write!(f, "	{:?} {}", idx, remote)?;
 		}
-
+	
 		Ok(())
 	}
 }

@@ -30,7 +30,7 @@ bincode = "1.3.3"
 thiserror = "1.0.30"
 netsim-embed = "0.7.1"
 derivative = "2.2.0"
-nalgebra = "0.30.1"
+nalgebra = { version = "0.30.1", features = [ "serde-serialize" ] }
 netsim-embed-machine = "0.6.2"
 futures-delay-queue = "0.5.1"
 async-global-executor = "2.0.2"

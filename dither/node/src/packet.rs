@@ -13,12 +13,11 @@ use super::{NodeID, RouteCoord};
 /// Acknowledging node packet
 #[derive(Debug, Archive, Serialize, Deserialize, Clone)]
 #[archive_attr(derive(CheckBytes))]
-pub struct AckNodePacket<'a, Net: Network> {
+pub struct PingingNodePacket<'a, Net: Network> {
 	#[with(Inline)]
 	pub packet: &'a NodePacket<Net>, // The packet being sent
-	pub packet_id: u16, // This packet's packet id
-	pub should_ack: bool, // Should the node that receives this packet immediately send back an acknowledgement
-	pub acknowledging: Option<u16>, // Packet that this packet is acknowledging
+	pub ping_id: Option<u16>, // Contains ping id if expects immediate acknowledgement
+	pub ack_ping: Option<u16>, // Packet ping id that this packet is acknowledging
 }
 
 /// Packets that are sent between nodes in this protocol.
@@ -89,8 +88,8 @@ impl<Net: Network> std::fmt::Debug for PacketRead<Net> {
 }
 impl<'b, Net: Network> PacketRead<Net> {
 	pub fn new(reader: Net::Read) -> Self { Self { reader, stream_buffer: AlignedVec::with_capacity(1024) } }
-	pub async fn read_packet(&'b mut self) -> Result<&'b Archived<AckNodePacket<'b, Net>>, RkyvCodecError> {
-		let packet = archive_stream::<Net::Read, AckNodePacket<Net>, VarintLength>(&mut self.reader, &mut self.stream_buffer).await?;
+	pub async fn read_packet(&'b mut self) -> Result<&'b Archived<PingingNodePacket<'b, Net>>, RkyvCodecError> {
+		let packet = archive_stream::<Net::Read, PingingNodePacket<Net>, VarintLength>(&mut self.reader, &mut self.stream_buffer).await?;
 		Ok(packet)
 	}
 }
@@ -102,7 +101,7 @@ impl<Net: Network> std::fmt::Debug for PacketWrite<Net> {
 }
 impl<Net: Network> PacketWrite<Net> {
 	pub fn new(writer: Net::Write) -> Self { Self { writer: RkyvWriter::new(writer) } }
-	pub async fn write_packet<'a>(&mut self, packet: &AckNodePacket<'a, Net>) -> Result<(), RkyvCodecError> {
+	pub async fn write_packet<'a>(&mut self, packet: &PingingNodePacket<'a, Net>) -> Result<(), RkyvCodecError> {
 		Ok(self.writer.send(packet).await?)
 	}
 }

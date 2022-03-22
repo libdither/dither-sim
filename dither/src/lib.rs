@@ -21,9 +21,9 @@ pub use commands::{DitherCommand, DitherEvent};
 
 #[derive(Error, Debug)]
 pub enum TransportError {
-	#[error("Failed to establish encrypted connection: {0}")]
+	#[error("failed to establish encrypted connection: {0}")]
 	EncryptionError(#[from] EncryptionError<DitherNet>),
-	#[error("Failed to establish connection: I/O Error")]
+	#[error("io error: {0}")]
 	IoError(#[from] std::io::Error),
 }
 

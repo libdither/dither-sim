@@ -46,7 +46,7 @@ impl PingTracker {
 			free_head: 0,
 
 			ping_count: 0,
-			ping_min: 0,
+			ping_min: RouteScalar::MAX,
 		}
 	}
 	// Get new id
@@ -73,14 +73,15 @@ impl PingTracker {
 		*next_free = self.free_head; // After the one just removed is filled up again, self.free_head will be the next free slot.
 		self.free_head = next_free_head; // Set free head to this slot which was just made available
 
-		let ping_duration = Duration::as_micros(&(Instant::now() - send_time)) as RouteScalar;
 		
-		if self.ping_min < ping_duration { self.ping_min = ping_duration };
+		let ping_duration = Instant::now().duration_since(send_time).as_micros() as RouteScalar;
+		
+		if ping_duration < self.ping_min  { self.ping_min = ping_duration };
 		Some(())
 	}
 
 	// Check if enough data has been gathered to stop returning ids
 	pub fn is_stable(&self) -> bool {
-		self.ping_count >= 2
+		self.ping_count >= 4
 	}
 }

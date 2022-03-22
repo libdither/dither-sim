@@ -3,7 +3,7 @@
 
 use std::{fmt, sync::Arc};
 
-use crate::{NodeAction, NodeError, NodeID, RemoteIdx, RouteCoord, net::{Connection, Network}, packet::{PacketRead, PacketWrite, AckNodePacket, ArchivedAckNodePacket, ArchivedNodePacket, NodePacket}, ping::PingTracker};
+use crate::{NodeAction, NodeError, NodeID, RemoteIdx, RouteCoord, net::{Connection, Network}, packet::{PacketRead, PacketWrite, PingingNodePacket, ArchivedPingingNodePacket, ArchivedNodePacket, NodePacket}, ping::PingTracker};
 
 use async_std::{sync::{Mutex, MutexGuard}, task::{self, JoinHandle}};
 use cupchan::{CupchanReader, CupchanWriter};
@@ -93,17 +93,15 @@ pub enum RemoteAction<Net: Network> {
 
 #[derive(Error, Debug)]
 pub enum RemoteError {
-	#[error("No active session")]
+	#[error("no active session")]
 	SessionInactive,
-	#[error("Received Acknowledgement even though there are no pending handshake requests")]
-	NoPendingHandshake,
-	#[error("Packet Codec Error")]
+	#[error("packet codec: {0}")]
 	CodecError(#[from] RkyvCodecError),
 
-	#[error("Node Send Error")]
+	#[error("failed to send message: {0}")]
 	SendError(#[from] mpsc::SendError),
 
-	#[error("Invalid NodeID for connection, expected: {expected}, found: {found}")]
+	#[error("invalid NodeID for connection, expected: {expected}, found: {found}")]
 	InvalidConnection { expected: NodeID, found: NodeID }
 }
 
@@ -134,23 +132,28 @@ impl<Net: Network> DirectRemote<Net> {
 		}
 	}
 	// Send packet as acknowledgement
-	async fn send_ack(&mut self, writer: &mut PacketWrite<Net>, packet_id: u16, packet: &NodePacket<Net>) -> Result<(), RemoteError> {
-		let should_ack = !self.ping_tracker.is_stable();
-		let packet = AckNodePacket {
+	/* async fn send_ack(&mut self, writer: &mut PacketWrite<Net>, ack_ping: u16, packet: &NodePacket<Net>) -> Result<(), RemoteError> {
+		log::debug!("Sending ack to {}: {:?}", self.addr, packet);
+		let ping_id = if !self.ping_tracker.is_stable() {
+			Some(self.ping_tracker.checkout_unique_id())
+		} else { None };
+		let packet = PingingNodePacket {
 			packet,
-			packet_id: self.ping_tracker.checkout_unique_id(),
-			should_ack,
-			acknowledging: Some(packet_id),
+			ping_id,
+			ack_ping: Some(ack_ping),
 		};
 		Ok(writer.write_packet(&packet).await?)
-	}
-	// Send packet
-	async fn send_packet(&mut self, writer: &mut PacketWrite<Net>, packet: &NodePacket<Net>, need_ack: bool) -> Result<(), RemoteError> {
-		let packet = AckNodePacket {
+	} */
+	/// Send packet to writer, optionally acknowledge a previous packet, and note whether or not this packet should be acknowledged
+	async fn send_packet(&mut self, writer: &mut PacketWrite<Net>, ack_ping: Option<u16>, packet: &NodePacket<Net>, can_ack: bool) -> Result<(), RemoteError> {
+		log::debug!("Sending packet to {}: {:?}, can_ack: {}", self.addr, packet, can_ack);
+		let ping_id = if can_ack && !self.ping_tracker.is_stable() {
+			Some(self.ping_tracker.checkout_unique_id())
+		} else { None };
+		let packet = PingingNodePacket {
 			packet,
-			packet_id: self.ping_tracker.checkout_unique_id(),
-			should_ack: need_ack && !self.ping_tracker.is_stable(),
-			acknowledging: None,
+			ping_id,
+			ack_ping
 		};
 		Ok(writer.write_packet(&packet).await?)
 	}
@@ -269,21 +272,6 @@ impl<Net: Network> Remote<Net> {
 		RemoteHandle::Active { join, sender: action_sender, shared_state, session_info_writer }
 	}
 
-	// Run remote action event loop. Consumes itself, should be run on independent thread
-	/* fn spawn(
-		self, // Shared state
-		node_action: Sender<NodeAction<Net>>, // 
-		connection: RemoteConnection<Net>,
-		initial_session_info: NodeSessionInfo,
-		shared_state: Arc<Mutex<Self>>,
-	) -> RemoteHandle<Net> {
-		let (action_sender, action_receiver) = mpsc::channel(20);
-		let (session_info_writer, session_info_reader) = cupchan::cupchan(initial_session_info);
-
-		RemoteHandle::Active { join: task::spawn(async {
-			self.run(action_receiver, node_action, connection, session_info_reader, shared_state.clone()).await;
-		}), sender: action_sender, shared_state, session_info_writer }
-	} */
 	/// Handle active session
 	#[allow(unused_variables)]
 	async fn run(
@@ -312,12 +300,12 @@ impl<Net: Network> Remote<Net> {
 								log::debug!("Remote {} received action: {:?}", direct.addr, action);
 								match action {
 									RemoteAction::Bootstrap => {
-										direct.send_packet(&mut writer,
+										direct.send_packet(&mut writer, None,
 											&NodePacket::Bootstrap { requester: self_node_id.clone() },
 										true).await.unwrap();
 									}
 									RemoteAction::SendPacket(packet) => {
-										direct.send_packet(&mut writer, &packet, true).await.unwrap();
+										direct.send_packet(&mut writer, None, &packet, true).await.unwrap();
 									}
 									RemoteAction::HandleConnection(connection) => {
 										let (addr, reader_new, writer_new) = Remote::create_codec(connection, &self_node_id)?;
@@ -333,24 +321,25 @@ impl<Net: Network> Remote<Net> {
 						// Receive Node Packets
 						packet = reader.read_packet().fuse() => {
 							let ret: Result<(), RemoteError> = try {
-								let ArchivedAckNodePacket { packet, packet_id, should_ack, acknowledging } = packet?;
+								let ArchivedPingingNodePacket { packet, ping_id, ack_ping } = packet?;
+								let ping_id: Option<u16> = ping_id.deserialize(&mut Infallible).unwrap();
 								// Register acknowledgement
-								if let ArchivedOption::Some(unique_id) = acknowledging { direct.ping_tracker.return_unique_id(*unique_id); }
+								if let ArchivedOption::Some(ack_id) = ack_ping { direct.ping_tracker.return_unique_id(*ack_id); }
 		
-								log::debug!("Received packet from {}: {:?} [{},{},{:?}]", direct.addr, packet, packet_id, should_ack, acknowledging);
+								log::debug!("Received packet from {}: {:?} [ping?:{:?},ack?:{:?}]", direct.addr, packet, ping_id, ack_ping);
 								match packet {
 									// If receive Bootstrap Request, send Info packet
 									ArchivedNodePacket::Bootstrap { requester } => {
 										let session_info = &*session_info_reader;
-										direct.send_ack(&mut writer, *packet_id, &NodePacket::Info {
+										direct.send_packet(&mut writer, ping_id, &NodePacket::Info {
 											route_coord: direct.route_coord,
 											active_peers: session_info.total_remotes,
 											active: session_info.is_active,
 											prompting_node: Some(requester.clone()),
-										}).await?;
+										}, true).await?;
 									},
 									ArchivedNodePacket::Info { route_coord, active_peers, active, prompting_node: _ } => {
-										if *should_ack { direct.send_ack(&mut writer, *packet_id, &NodePacket::Ack).await?; }
+										direct.send_packet(&mut writer, ping_id, &NodePacket::Ack, true).await?;
 										direct.route_coord = *route_coord;
 										direct.remote_count = *active_peers;
 										direct.considered_active = *active;
@@ -366,7 +355,8 @@ impl<Net: Network> Remote<Net> {
 										node_action.send(NodeAction::HandleWantPeer { requesting: requesting.clone(), addr: addr.deserialize(&mut Infallible).unwrap() }).await?;
 									},
 									ArchivedNodePacket::Ack => {
-										if *should_ack { direct.send_ack(&mut writer, *packet_id, &NodePacket::Ack).await?; }
+										if ping_id.is_some() { direct.send_packet(&mut writer, ping_id, &NodePacket::Ack, true).await?; }
+										println!("Received Ack Packet, stable: {}, ping(micros): {}", direct.ping_tracker.is_stable(), direct.ping_tracker.ping_min)
 									},
 									
 									ArchivedNodePacket::Data(data) => log::info!("Received data: {}", String::from_utf8_lossy(data)),

@@ -106,28 +106,28 @@ pub enum InternetEvent {
 /// Internet Error object
 #[derive(Error, Debug)]
 pub enum InternetError {
-	#[error("Event Receiver Closed")]
+	#[error("event receiver closed")]
 	EventReceiverClosed,
-	#[error("Action Sender Closed")]
+	#[error("action sender closed")]
 	ActionSenderClosed,
-	#[error("No Runtime")]
+	#[error("no runtime")]
 	NoRuntime,
 
-	#[error("Internet Machine Error: {0}")]
+	#[error("machine error: {0}")]
 	InternetMachineError(#[from] internet_node::MachineError),
-	#[error("Internet Network Error: {0}")]
+	#[error("network error: {0}")]
 	InternetNetworkError(#[from] internet_node::NetworkError),
 
-	#[error("Invalid Node Type for {index}, expected: {expected:?}")]
+	#[error("invalid node type for {index}, expected: {expected:?}")]
 	InvalidNodeType { index: NodeIdx, expected: NodeType },
-	#[error("Unknown Node index: {index}")]
+	#[error("unknown node index: {index}")]
 	UnknownNode { index: NodeIdx },
-	#[error("Unknown Wire index: {index}")]
+	#[error("unknown wire index: {index}")]
 	UnknownWire { index: WireIdx },
-	#[error("Can't connect machines directory to each other")]
+	#[error("can't connect machines directly to each other")]
 	NodeConnectionError,
 
-	#[error("Spawned Too many networks, not enough addresses (see MAX_NETWORKS)")]
+	#[error("spawned too many networks, not enough addresses (see MAX_NETWORKS)")]
 	TooManyNetworks,
 
 	#[error(transparent)]
@@ -332,10 +332,10 @@ impl Internet {
 					}
 					InternetAction::HandleDeviceEvent(index, DeviceEvent::DitherEvent(dither_event)) => {
 						match dither_event {
-							DitherEvent::NodeInfo(device::NodeInfo { route_coord, node_id, public_addr, remotes, active_remotes } ) => {
+							DitherEvent::NodeInfo(device::NodeInfo { route_coord, node_id, public_addr, remotes, active_remotes, local_addr } ) => {
 								let network_ip = self.machine(index)?.connection_ip();
 								runtime.send_event(InternetEvent::MachineInfo(index, MachineInfo {
-									route_coord, public_addr, node_id, remotes, active_remotes, network_ip,
+									route_coord, public_addr, node_id, remotes, active_remotes, network_ip, local_addr
 								}))?;
 							}
 							//_ => log::error!("Unhandled Device Event")

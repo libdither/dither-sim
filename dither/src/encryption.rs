@@ -6,11 +6,11 @@ use node::{NodeID, net::{Connection, Network}};
 
 #[derive(Error, Debug)]
 pub enum EncryptionError<Net: Network> {
-	#[error("Attempted to establish connection to {expected} but node at {addr} has the ID of {found}")]
+	#[error("expected {expected} for node at {addr}, but node sent {found}")]
 	InvalidNodeID { addr: Net::Address, expected: NodeID, found: NodeID },
-	#[error("Failed to establish encrypted connection because format was wrong")]
+	#[error("invalid multihash encoding")]
 	BadHash,
-	#[error("Failed to Establish encrypted connection")]
+	#[error("io error: {0}")]
 	IOError(#[from] std::io::Error),
 }
 
