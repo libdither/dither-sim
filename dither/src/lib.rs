@@ -96,7 +96,7 @@ impl DitherCore {
 				}
 				net_action = node_network_receiver.next() => { // Listen for net actions from Dither Node's Network API
 					if let Some(net_action) = net_action {
-						log::debug!("Received NetAction: {:?}", net_action);
+						// log::debug!("Received NetAction: {:?}", net_action);
 						let result: anyhow::Result<()> = try {
 							// Handle Network Actions
 							match net_action {

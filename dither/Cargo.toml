@@ -8,17 +8,17 @@ description = "Wraps Node API with platform-specific features"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.55"
-env_logger = "0.9.0"
+anyhow = "1.0.56"
 futures = "0.3.21"
-log = "0.4.14"
+log = "0.4.16"
 
 node = { path = "node" }
 serde = { version = "1.0.136", features = ["derive"] }
-rustyline = "9.1.2"
-async-std = { version = "1.10.0", features = [ "attributes" ] }
-rkyv = { version = "0.7.33", features = ["validation"] }
+async-std = { version = "1.11.0", features = [ "attributes" ] }
+rkyv = { version = "0.7.36", features = ["validation"] }
 thiserror = "1.0.30"
+rustyline-async = { git = "https://github.com/zyansheep/rustyline-async" }
+simplelog = "0.11.2"
 
 [lib]
 name = "libdither"

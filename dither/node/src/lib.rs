@@ -166,7 +166,6 @@ impl<Net: Network> Node<Net> {
 			active: Default::default(),
 		}
 	}
-
 	pub fn remote(&self, node_idx: RemoteIdx) -> Result<&RemoteHandle<Net>, NodeError<Net>> {
 		self.remotes
 			.get(node_idx)
@@ -204,7 +203,6 @@ impl<Net: Network> Node<Net> {
 		let id = self.remotes[index].lock().await.node_id.clone();
 		self.ids.insert(id, index);
 	}
-
 	pub fn spawn(self, network_action: Sender<NetAction<Net>>) -> (JoinHandle<Node<Net>>, Sender<NodeAction<Net>>) {
 		let (action_sender, action_receiver) = mpsc::channel(100);
 		let join = task::spawn(self.run(action_sender.clone(), network_action, action_receiver));
@@ -287,9 +285,9 @@ impl<Net: Network> Node<Net> {
 							let _ = handle.action(RemoteAction::AttemptSync).await;
 						}
 						// Wait a brief time for sync
-						async_std::task::sleep(std::time::Duration::from_millis(1)).await;
+						async_std::task::sleep(std::time::Duration::from_millis(10)).await;
 						// Print
-						println!("{}", self);
+						log::info!("{}", self);
 					},
 					NodeAction::ForwardPacket(node_id, packet) => {
 						let handle = self.remote_mut(self.index_by_node_id(&node_id)?)?;
@@ -305,20 +303,6 @@ impl<Net: Network> Node<Net> {
 
 		self
 	}
-
-	// Handle Connection object by creating a new Remote object if it doesn't already exist and setting up mapping
-	/* pub async fn handle_connection(&mut self, action_sender: &Sender<NodeAction<Net>>, address: Net::Address, connection: Net::Conn) -> Result<(), NodeError<Net>> {
-		let remote = if self.addrs.contains_key(&address) {
-			*self.addrs.get(&address).unwrap()
-		} else {
-			self.remotes.insert(RemoteHandle::Inactive(Remote::new()))
-		};
-
-
-		let remote = self.remote_mut(remote).unwrap();
-		remote.activate(action_sender);
-		Ok(())
-	} */
 }
 
 impl<Net: Network> fmt::Display for Node<Net> {

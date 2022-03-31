@@ -356,7 +356,7 @@ impl<Net: Network> Remote<Net> {
 									},
 									ArchivedNodePacket::Ack => {
 										if ping_id.is_some() { direct.send_packet(&mut writer, ping_id, &NodePacket::Ack, true).await?; }
-										println!("Received Ack Packet, stable: {}, ping(micros): {}", direct.ping_tracker.is_stable(), direct.ping_tracker.ping_min)
+										log::debug!("Received Ack Packet, stable: {}, ping(micros): {}", direct.ping_tracker.is_stable(), direct.ping_tracker.ping_min)
 									},
 									
 									ArchivedNodePacket::Data(data) => log::info!("Received data: {}", String::from_utf8_lossy(data)),
