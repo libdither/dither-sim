@@ -15,7 +15,7 @@ log = "0.4.16"
 node = { path = "node" }
 serde = { version = "1.0.136", features = ["derive"] }
 async-std = { version = "1.11.0", features = [ "attributes" ] }
-rkyv = { version = "0.7.36", features = ["validation"] }
+rkyv = { version = "0.7.37", features = ["validation"] }
 thiserror = "1.0.30"
 rustyline-async = { git = "https://github.com/zyansheep/rustyline-async" }
 simplelog = "0.11.2"
