@@ -48,8 +48,7 @@ impl State {
 				.push(Text::new(if self.valid_file { "√" } else { "" }))
 			)
 			.push(
-				Button::new(&mut self.load_button, Text::new("Load Simulation"))
-					.on_press(Message::TriggerLoad),
+				Button::new("Load Simulation").on_press(Message::TriggerLoad),
 			)
 			.into()
 	}

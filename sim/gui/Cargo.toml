@@ -2,36 +2,36 @@
 name = "gui"
 version = "0.1.0"
 authors = ["zyansheep <zyansheep@protonmail.com>"]
-edition = "2018"
+edition = "2021"
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 sim = { path = ".." }
+libdither = { version = "0.1.0", path = "../../dither" }
 
-async-std = "1.10.0"
-iced = { version = "0.3.0", features = ["canvas" ] }
-iced_aw = { git = "https://github.com/zyansheep/iced_aw", features = ["tabs"] }
-iced_futures = "0.3.0"
+async-std = "1.12.0"
+iced = { version = "0.4.2", features = [ "canvas", "pure" ] }
+iced_aw = { version = "0.2.0", default-features = false, features = ["tabs"] }
+iced_futures = "0.4.1"
+iced_graphics = "0.3.0"
 
-anyhow = "1.0.55"
+anyhow = "1.0.58"
 env_logger = "0.9.0"
 derivative = "2.2.0"
 
 rand = "0.8.5"
-nalgebra = "0.30.1"
+nalgebra = "0.31.0"
 futures = "0.3.21"
-serde = "1.0.136"
-log = "0.4.14"
-petgraph = "0.6.0"
+serde = "1.0.137"
+log = "0.4.17"
+petgraph = "0.6.2"
 either = "1.6.1"
-iced_graphics = "0.2.0"
-libdither = { version = "0.1.0", path = "../../dither" }
-ron = "0.7.0"
-thiserror = "1.0.30"
+ron = "0.7.1"
+thiserror = "1.0.31"
 
 [features]
-
 
 [package.metadata.nix]
 longDescription = """

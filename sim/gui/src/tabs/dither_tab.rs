@@ -39,7 +39,7 @@ impl NetworkNode for DitherTabNode {
 	position = λ(self) > self.route_coord map { Vector::new (f32 x) (f32 y) } unwrap_default
 	*/
 	fn position(&self) -> Vector {
-		Vector::new(self.route_coord.0 as f32, self.route_coord.1 as f32)
+		Vector::new(self.route_coord.x as f32, self.route_coord.y as f32)
 	}
 	fn render(&self, frame: &mut canvas::Frame, hover: bool, selected: bool, scaling: f32) {
 		let point = {
