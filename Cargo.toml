@@ -25,7 +25,6 @@ nativeBuildInputs = [
 ]
 buildInputs = [
 	"libxkbcommon",
-	"x11",
 	"xorg.libX11",
 	"xorg.libXcursor",
 	"xorg.libXrandr",
