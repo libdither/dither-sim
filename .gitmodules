@@ -4,3 +4,6 @@
 [submodule "vendor/iced"]
 	path = vendor/iced
 	url = https://github.com/zyansheep/iced
+[submodule "vendor/nalgebra"]
+	path = vendor/nalgebra
+	url = https://github.com/zyansheep/nalgebra
