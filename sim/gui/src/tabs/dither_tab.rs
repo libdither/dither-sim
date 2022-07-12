@@ -115,7 +115,7 @@ impl DitherTab {
 	}
 
 	fn mouse_field_position(&self) -> FieldPosition {
-		let cursor_pos = self.map.global_cursor_position();
+		let cursor_pos = self.map.global_cursor_position;
 		FieldPosition::new(cursor_pos.x as i32, cursor_pos.y as i32)
 	}
 
@@ -156,17 +156,7 @@ impl DitherTab {
 							match keyboard_event {
 								keyboard::Event::KeyReleased { key_code, modifiers } => {
 									match modifiers {
-										_ => {
-											match key_code {
-												keyboard::KeyCode::C => {
-													self.map.set_connecting();
-												}
-												keyboard::KeyCode::G => {
-													self.map.grab_node();
-												}
-												_ => {}
-											}
-										}
+										_ => {}
 										keyboard::Modifiers::CTRL => {
 											match key_code {
 												keyboard::KeyCode::S => {

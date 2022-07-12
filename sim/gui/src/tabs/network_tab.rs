@@ -102,7 +102,7 @@ impl NetworkTab {
 	}
 
 	fn mouse_field_position(&self) -> FieldPosition {
-		let cursor_pos = self.map.global_cursor_position();
+		let cursor_pos = self.map.global_cursor_position;
 		FieldPosition::new(cursor_pos.x as i32, cursor_pos.y as i32)
 	}
 
@@ -151,12 +151,6 @@ impl NetworkTab {
 											}
 											keyboard::KeyCode::M => {
 												return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Machine));
-											}
-											keyboard::KeyCode::C => {
-												self.map.set_connecting();
-											}
-											keyboard::KeyCode::G => {
-												self.map.grab_node();
 											}
 											_ => {}
 										}

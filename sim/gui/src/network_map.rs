@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use iced::{Color, Length, Point, Rectangle, Vector, pure::{Element, widget::canvas::{self, Canvas, Cache, Cursor, Event, Frame, Geometry, Path, Stroke, Text, event}}, keyboard, mouse};
+use iced::{Color, Length, Point, Rectangle, Vector, canvas::event::Status, keyboard, mouse, pure::{Element, widget::canvas::{self, Canvas, Cache, Cursor, Event, Frame, Geometry, Path, Stroke, Text, event}}};
 use nalgebra::Vector2;
 use petgraph::{EdgeType, Graph, graph::{EdgeIndex, NodeIndex}};
 use either::Either;
@@ -12,7 +12,7 @@ use sim::FieldPosition;
 
 #[derive(Derivative, Debug, PartialEq)]
 #[derivative(Default)]
-enum Interaction {
+pub enum Interaction {
 	#[derivative(Default)]
 	/// Doing Nothing
 	None,
@@ -20,6 +20,8 @@ enum Interaction {
 	Hovering(NodeIndex),
 	/// Holding down left mouse button over node
 	PressingNode { pos: Point, index: NodeIndex },
+	/// Holding down left mouse button over canvas
+	PressingCanvas { pos: Point },
 	/// Panning the canvas
 	Panning { start: Point },
 	/// Moving node
@@ -28,8 +30,9 @@ enum Interaction {
 	Connecting { from: NodeIndex, candidate: Either<Point, NodeIndex> },
 }
 pub trait NetworkNode: Sized + 'static {
+	/// Unique ID used identify node in another context
 	type NodeId: Sized + Clone + PartialOrd + PartialEq + Eq + std::hash::Hash;
-	/// Id that can be used to find the node in some other location
+	/// Returns this node's unique ID
 	fn unique_id(&self) -> Self::NodeId;
 	/// Position on the map of the node
 	fn position(&self) -> Vector;
@@ -58,21 +61,27 @@ pub struct NetworkMap<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> {
 	scale: f32, // Current graph scaling, Important: this should not be zero
 	translation: Vector, // Current Graph translation
 
-	global_cursor_position: Point, // Position of cursor in the global coordinate plane (i.e. before scale and translation)
+	pub global_cursor_position: Point, // Position of cursor in the global coordinate plane (i.e. before scale and translation)
 	selected_node: Option<NodeIndex>, // Current selected node
 }
 
 #[derive(Debug, Clone)]
 pub enum Message<N: NetworkNode, E: NetworkEdge<N>> {
 	// Events
-	Translated(Vector),
-	Scaled(f32, Option<Vector>),
 	EdgeClicked(E::EdgeId),
 	NodeDragged(N::NodeId, Point),
 	TriggerConnection(N::NodeId, N::NodeId),
 
+	// Internal Events
+	MouseMoved(Point),
+	ClearOverlayCache,
+	ClearNodeCache,
+	SelectNode(NodeIndex),
+	MoveCanvas(Vector),
+	ScaleMoveCanvas(f32, Vector),
+
 	// Data output
-	// CanvasEvent(Event),
+	CanvasEvent(Event),
 }
 impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	const MIN_SCALING: f32 = 0.1;
@@ -140,16 +149,19 @@ impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	}
 	pub fn update(&mut self, message: Message<N, E>) {
 		match message {
-			Message::Scaled(scale, translation) => {
+			Message::ScaleMoveCanvas(scale, translation) => {
 				self.scale = scale;
-				if let Some(translation) = translation { self.translation = translation }
+				self.translation = translation;
 				self.node_cache.clear();
 			}
-			Message::Translated(translation) => {
+			Message::MoveCanvas(translation) => {
 				self.translation = translation;
-				self.translation_cache.clear();
+				self.node_cache.clear();
 			}
-			Message::MouseMoved()
+			Message::MouseMoved(global_position) => self.global_cursor_position = global_position,
+			Message::SelectNode(index) => self.selected_node = Some(index),
+			Message::ClearNodeCache => self.node_cache.clear(),
+			Message::ClearOverlayCache => self.overlay_cache.clear(),
 			_ => {},
 		}
 	}
@@ -170,18 +182,14 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 		event: Event,
 		bounds: Rectangle,
 		cursor: Cursor,
-	) -> (event::Status, Option<Message<N, E>>) {
+	) -> (Status, Option<Message<N, E>>) {
 		let center = Vector::new(bounds.width / 2.0, bounds.height / 2.0);
 
 		let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
 			position
 		} else {
-			return (event::Status::Ignored, None);
+			return (Status::Ignored, None);
 		};
-		state.global_cursor_position = Point::new(
-			cursor_position.x * (1.0 / self.scale),
-			cursor_position.y * (1.0 / self.scale)
-		) - self.translation;
 
 		let ret: (Option<Interaction>, Option<Message<N, E>>) = match event {
 			Event::Keyboard(keyboard::Event::KeyReleased { key_code, modifiers }) => {
@@ -191,40 +199,38 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 							// Trigger connecting two nodes
 							keyboard::KeyCode::C => {
 								if let Some(selected) = self.selected_node {
-									self.over_cache.clear();
-									*state = Interaction::Connecting { from: selected, candidate: Either::Left(self.global_cursor_position) };
-								}
+									(Some(Interaction::Connecting { from: selected, candidate: Either::Left(self.global_cursor_position) }), Some(Message::ClearOverlayCache))
+								} else { (None, None) }
 							}
-							// Trigger 
+							// Trigger grabbing a node
 							keyboard::KeyCode::G => {
 								if let Some(selected) = self.selected_node {
-									self.overlay_cache.clear();
-									*state = Interaction::MovingNode(selected, self.global_cursor_position);
-								}
+									(Some(Interaction::MovingNode { index: selected, initial_position: self.global_cursor_position }), Some(Message::ClearOverlayCache))
+								} else { (None, None) }
 							}
-							_ => {}
+							_ => (None, None)
 						}
 					}
-					_ => {},
+					_ => (None, None),
 				}
 			}
-			Event::Keyboard(_) => {},
+			Event::Keyboard(_) => (None, None),
 			Event::Mouse(mouse_event) => {
 				match mouse_event {
 					mouse::Event::ButtonPressed(button) => {
 						// Trigger Panning
 						match button {
 							mouse::Button::Left => {
-								match self.interaction {
-									Interaction::Hovering(node) => (Some(Interaction::PressingNode(cursor_position, node)), None),
+								match *state {
+									Interaction::Hovering(index) => (Some(Interaction::PressingNode { pos: cursor_position, index }), None),
 									Interaction::Connecting { from: _, candidate: _ } => (None, None),
-									Interaction::MovingNode(node, initial_position) => {
-										let node = &self.nodes[node];
+									Interaction::MovingNode { index, initial_position } => {
+										let node = &self.nodes[index];
 										(Some(Interaction::None), Some(Message::NodeDragged(node.unique_id(),
 											Point::ORIGIN + node.position() + (self.global_cursor_position.clone() - initial_position)
 										)))
 									}
-									_ => (Some(Interaction::PressingCanvas(cursor_position)), None),
+									_ => (Some(Interaction::PressingCanvas { pos: cursor_position }), None),
 								}
 							}
 							_ => (None, None)
@@ -233,13 +239,9 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 					mouse::Event::ButtonReleased(button) => {
 						match button {
 							mouse::Button::Left => {
-								match self.interaction {
-									Interaction::PressingNode(_, node) => {
-										self.selected_node = Some(node);
-										(Some(Interaction::Hovering(node)), None)
-									}
-									Interaction::PressingCanvas(_) => {
-										(Some(Interaction::None), None)
+								match *state {
+									Interaction::PressingNode { index: node, .. } => {
+										(Some(Interaction::Hovering(node)), Some(Message::SelectNode(node)))
 									}
 									Interaction::Connecting { from, candidate: Either::Right(to) } => {
 										(Some(Interaction::None), Some(Message::TriggerConnection(self.nodes[from].unique_id(), self.nodes[to].unique_id())))
@@ -251,13 +253,18 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 						}
 					}
 					mouse::Event::CursorMoved { position } => {
-						match self.interaction {
-							Interaction::PressingCanvas(start) | Interaction::PressingNode(start, _) | Interaction::Panning { start } => {
+						let mouse_update_message = Some(Message::MouseMoved(Point::new(
+							cursor_position.x * (1.0 / self.scale),
+							cursor_position.y * (1.0 / self.scale)
+						) - self.translation));
+
+						match *state {
+							Interaction::PressingCanvas { pos: start } | Interaction::PressingNode { pos: start, .. } | Interaction::Panning { start } => {
 								if self.scale == 0.0 { panic!("scaling should never be zero") }
-								self.translation = self.translation + (cursor_position - start) * (1.0 / self.scale);
+								let translation = self.translation + (cursor_position - start) * (1.0 / self.scale);
 								(Some(Interaction::Panning {
-									start: cursor_position,
-								}), None)
+									start,
+								}), Some(Message::MoveCanvas(translation)))
 							}
 							Interaction::Connecting { from, candidate } => {
 								(match self.detect_hovering() {
@@ -265,17 +272,16 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 										Some(Interaction::Connecting { from, candidate: Either::Right(hovering) })
 									},
 									_ => Some(Interaction::Connecting { from, candidate: Either::Left(self.global_cursor_position) } )
-								}, None)
+								}, mouse_update_message)
 							}
 							Interaction::MovingNode { .. } => {
-								self.overlay_cache.clear();
-								(None, None)
+								(None, Some(Message::ClearOverlayCache))
 							}
 							_ => {
 								let hovering = self.detect_hovering();
 								(if let Some(hovering) = hovering {
 									Some(Interaction::Hovering(hovering))
-								} else { Some(Interaction::None) }, None)
+								} else { Some(Interaction::None) }, mouse_update_message)
 							},
 						}
 					}
@@ -286,43 +292,45 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 							let old_scaling = self.scale;
 
 							// Change scaling
-							self.scale = (self.scale * (1.0 + y / Self::SCALING_SPEED)).max(Self::MIN_SCALING).min(Self::MAX_SCALING);
+							let scale = (self.scale * (1.0 + y / Self::SCALING_SPEED)).max(Self::MIN_SCALING).min(Self::MAX_SCALING);
 
-							let factor = self.scale - old_scaling;
+							let factor = scale - old_scaling;
 
-								self.translation = self.translation
-									- Vector::new(
-										cursor_position.x * factor / (old_scaling * old_scaling),
-										cursor_position.y * factor / (old_scaling * old_scaling),
-									);
-							
-							self.trigger_update(); // Need update here because interaction type does not change
-
-							(None, None)
+							let translation = self.translation
+								- Vector::new(
+									cursor_position.x * factor / (old_scaling * old_scaling),
+									cursor_position.y * factor / (old_scaling * old_scaling),
+								);
+							(None, Some(Message::ScaleMoveCanvas(scale, translation)))
 						}
 					},
 					_ => { (None, None) },
 				}
 			}
 		};
-		match ret {
-			(None, None) => (event::Status::Ignored, Some(Message::CanvasEvent(event))),
-			(Some(interaction), msg) if interaction != self.interaction => {
+		if let Some(interaction) = ret.0 {
+			*state = interaction;
+		}
+		if let Some(msg) = ret.1 {
+			(Status::Captured, Some(msg))
+		} else { (Status::Ignored, None) }
+		/* match ret {
+			(Some(interaction), msg) if interaction != *state => {
 				use Interaction::*;
-				match (&self.interaction, &interaction) {
+				match (&state, &interaction) {
 					(Hovering(_), _) | (_, Hovering(_)) => self.node_cache.clear(),
 					(Connecting { .. }, _) | (_, Connecting { .. }) => self.node_cache.clear(),
 					(Panning { .. }, _) | (_, Panning { .. }) => self.node_cache.clear(),
 					(PressingNode { .. }, _) => self.node_cache.clear(), // Unpress Node
-					(PressingCanvas(_), _) if self.selected_node.is_some() => { self.node_cache.clear(); self.selected_node = Option::None; },
+					(PressingCanvas { .. }, _) if self.selected_node.is_some() => { self.node_cache.clear(); self.selected_node = Option::None; },
 					_ => {},
 				}
-				self.interaction = interaction;
+				*state = interaction;
 				self.overlay_cache.clear();
 				(event::Status::Captured, msg)
 			}
 			(_, msg) => (event::Status::Ignored, msg),
-		}
+		} */
 	}
 
 	fn draw(&self, state: &Self::State, bounds: Rectangle, _: Cursor) -> Vec<Geometry> {
@@ -349,7 +357,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 					Interaction::Hovering(hovering_node)
 					 | Interaction::PressingNode { pos: _, index: hovering_node }
 					 | Interaction::Connecting { from: _, candidate: Either::Right(hovering_node) }
-					 = self.interaction { hovering_node == node_index } else { false };
+					 = *state { hovering_node == node_index } else { false };
 					self.nodes[node_index].render(frame, hover, self.selected_node == Some(node_index), self.scale);
 				}
 			});
@@ -368,7 +376,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 			frame.with_save(|frame| {
 				frame.scale(self.scale);
 				frame.translate(self.translation);
-				match self.interaction {
+				match *state {
 					Interaction::Connecting { from, candidate } => {
 						let from = self.nodes.node_weight(from).map(|n|Point::ORIGIN + n.position());
 						if let (Some(point_from), Some(point_to)) = (from, match candidate {
@@ -379,7 +387,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 						}
 					}
 					Interaction::MovingNode { initial_position, index } => {
-						if let Some(node) = self.nodes.node_weight(node) {
+						if let Some(node) = self.nodes.node_weight(index) {
 							frame.with_save(|frame|{
 								frame.translate((self.global_cursor_position - initial_position));
 								node.render(frame, false, false, self.scale);
@@ -392,17 +400,18 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 			
 			frame.fill_text(Text { content:
 				format!("T: ({}, {}), S: {}, FP: ({}, {}), Int: {:?}",
-				self.translation.x, self.translation.y, self.scale, self.global_cursor_position.x, self.global_cursor_position.y, self.interaction),
+				self.translation.x, self.translation.y, self.scale, self.global_cursor_position.x, self.global_cursor_position.y, state),
 				position: Point::new(0.0, 0.0), size: 20.0, ..Default::default()
 			});
 		});
 		vec![translated_nodes, overlay]
 	}
 
-	fn mouse_interaction(&self, state: &mut Self::State, bounds: Rectangle, cursor: Cursor) -> mouse::Interaction {
-		match self.interaction {
-			Interaction::Selecting => mouse::Interaction::Idle,
-			Interaction::Panning { .. } => mouse::Interaction::Grabbing,
+	fn mouse_interaction(&self, state: &Self::State, bounds: Rectangle, cursor: Cursor) -> mouse::Interaction {
+		match state {
+			Interaction::Hovering(_) => mouse::Interaction::Crosshair,
+			Interaction::MovingNode { .. } => mouse::Interaction::Grabbing,
+			Interaction::Panning { .. } | Interaction::PressingCanvas { .. } => mouse::Interaction::Grabbing,
 			Interaction::None if cursor.is_over(&bounds) => mouse::Interaction::Idle,
 			_ => mouse::Interaction::default(),
 		}
