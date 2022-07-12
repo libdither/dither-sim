@@ -7,7 +7,7 @@ extern crate anyhow;
 #[macro_use]
 extern crate thiserror;
 
-use iced::{Application, Settings, window};
+use iced::{pure::{Application}, Settings, window};
 use crate::gui::{NetSimApp, NetSimAppSettings};
 pub mod tabs;
 pub mod network_map;

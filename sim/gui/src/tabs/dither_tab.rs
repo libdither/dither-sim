@@ -2,8 +2,8 @@ use std::net::{Ipv4Addr, SocketAddr};
 
 use super::{Icon, Tab};
 use anyhow::Context;
-use iced::{Align, Button, Color, Column, Container, Element, Length, Point, Row, Text, Vector, button, canvas::{self, Path, Stroke, event}, keyboard};
-use iced_aw::TabLabel;
+use iced::{Color, Length, Point, Vector, alignment::{Horizontal, Vertical}, canvas::{self, Path, Stroke, event}, keyboard, pure::{container, Element, column, row, button, text}};
+use iced_aw::pure::TabLabel;
 use libdither::{DitherCommand, Address};
 use petgraph::Undirected;
 use sim::{FieldPosition, MachineInfo, NodeID, NodeIdx, NodeType, RouteCoord, WireIdx};
@@ -61,7 +61,7 @@ impl NetworkNode for DitherTabNode {
 		frame.fill_text(canvas::Text { content:
 			label,
 			position: point, color: Color::from_rgb8(0, 0, 0), size: radius,
-			horizontal_alignment: iced::HorizontalAlignment::Center, vertical_alignment: iced::VerticalAlignment::Center,
+			horizontal_alignment: Horizontal::Center, vertical_alignment: Vertical::Center,
 			..Default::default()
 		});
 	}
@@ -156,7 +156,7 @@ impl DitherTab {
 							match keyboard_event {
 								keyboard::Event::KeyReleased { key_code, modifiers } => {
 									match modifiers {
-										keyboard::Modifiers { shift: false, control: false, alt: false, logo: false } => {
+										_ => {
 											match key_code {
 												keyboard::KeyCode::C => {
 													self.map.set_connecting();
@@ -167,7 +167,7 @@ impl DitherTab {
 												_ => {}
 											}
 										}
-										keyboard::Modifiers { shift: false, control: true, alt: false, logo: false } => {
+										keyboard::Modifiers::CTRL => {
 											match key_code {
 												keyboard::KeyCode::S => {
 													return Some(loaded::Message::TriggerSave);
@@ -211,13 +211,12 @@ impl Tab for DitherTab {
 		TabLabel::IconText(Icon::CentralizedNetwork.into(), self.title())
 	}
 
-	fn content(&mut self) -> Element<'_, Self::Message> {
-		let content = Column::new().push(self.map.view().map(move |message| Message::NetMapMessage(message)));
-
-		Container::new(content)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.into()
+	fn content(&self) -> Element<'_, Self::Message> {
+		container(
+			column().push(self.map.view().map(move |message| Message::NetMapMessage(message)))
+		).width(Length::Fill)
+		.height(Length::Fill)
+		.into()
 	}
 }
 

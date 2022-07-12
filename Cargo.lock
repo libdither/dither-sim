@@ -1288,9 +1288,10 @@ dependencies = [
  "iced_aw",
  "iced_futures",
  "iced_graphics",
+ "iced_native",
  "libdither",
  "log",
- "nalgebra 0.31.0",
+ "nalgebra",
  "petgraph",
  "rand",
  "ron",
@@ -1336,7 +1337,7 @@ dependencies = [
 [[package]]
 name = "hashdb"
 version = "0.1.0"
-source = "git+https://github.com/libdither/disp#dc74b03269e2173ad9d50a9fc466b15c912290f8"
+source = "git+https://github.com/libdither/disp#e0af38f50bf68f578bc3f6cb27e868c7d4256530"
 dependencies = [
  "bincode",
  "bs58",
@@ -1347,7 +1348,7 @@ dependencies = [
  "digest",
  "futures",
  "multihash",
- "rkyv 0.7.39 (git+https://github.com/rkyv/rkyv)",
+ "rkyv",
  "serde",
  "thiserror",
  "unsigned-varint",
@@ -1398,6 +1399,7 @@ checksum = "b0ba7cca72e5405936b31f104f8f7fcd371450ab170cd936fda051c8ffc3c614"
 dependencies = [
  "iced_graphics",
  "iced_native",
+ "iced_pure",
  "iced_style",
 ]
 
@@ -1626,7 +1628,7 @@ dependencies = [
  "futures",
  "log",
  "node",
- "rkyv 0.7.39 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rkyv",
  "rustyline-async",
  "serde",
  "simplelog",
@@ -1911,34 +1913,16 @@ dependencies = [
 
 [[package]]
 name = "nalgebra"
-version = "0.30.1"
-source = "git+https://github.com/zyansheep/nalgebra#e913beca889dc278d1c0d6cadd2008d3f9bcc0af"
+version = "0.31.0"
 dependencies = [
  "approx",
  "bytecheck",
  "matrixmultiply",
- "nalgebra-macros 0.1.0 (git+https://github.com/zyansheep/nalgebra)",
+ "nalgebra-macros",
  "num-complex",
  "num-rational",
  "num-traits",
- "rkyv 0.7.39 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde",
- "simba",
- "typenum",
-]
-
-[[package]]
-name = "nalgebra"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18a89248335f688e4bd994e6d030fd7e185eb41769b8c435395075425e100ac6"
-dependencies = [
- "approx",
- "matrixmultiply",
- "nalgebra-macros 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "num-complex",
- "num-rational",
- "num-traits",
+ "rkyv",
  "serde",
  "simba",
  "typenum",
@@ -1947,18 +1931,6 @@ dependencies = [
 [[package]]
 name = "nalgebra-macros"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01fcc0b8149b4632adc89ac3b7b31a12fb6099a0317a4eb2ebff574ef7de7218"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "nalgebra-macros"
-version = "0.1.0"
-source = "git+https://github.com/zyansheep/nalgebra#e913beca889dc278d1c0d6cadd2008d3f9bcc0af"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2021,18 +1993,29 @@ checksum = "e1bcdd74c20ad5d95aacd60ef9ba40fdf77f767051040541df557b7a9b2a2121"
 [[package]]
 name = "netsim-embed"
 version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e561fd26ad86f3ba2804dc4eeb05e3e67ec2feca705c61f6d145b3915e79e56"
 dependencies = [
  "async-global-executor",
  "async-process",
  "futures",
  "libpacket",
  "log",
- "netsim-embed-core",
- "netsim-embed-machine",
+ "netsim-embed-core 0.4.2",
+ "netsim-embed-machine 0.6.2",
  "netsim-embed-nat",
  "netsim-embed-router",
+]
+
+[[package]]
+name = "netsim-embed-core"
+version = "0.4.2"
+dependencies = [
+ "async-global-executor",
+ "async-io",
+ "futures",
+ "libpacket",
+ "rand",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -2052,6 +2035,20 @@ dependencies = [
 [[package]]
 name = "netsim-embed-machine"
 version = "0.6.2"
+dependencies = [
+ "async-global-executor",
+ "async-io",
+ "async-process",
+ "futures",
+ "ioctl-sys",
+ "libc",
+ "log",
+ "netsim-embed-core 0.4.2",
+]
+
+[[package]]
+name = "netsim-embed-machine"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0f1112c44fffc1f82dfc64b790f3fd0eca33094d8aec86de7fea872a441f39b"
 dependencies = [
@@ -2062,32 +2059,28 @@ dependencies = [
  "ioctl-sys",
  "libc",
  "log",
- "netsim-embed-core",
+ "netsim-embed-core 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "netsim-embed-nat"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7513d04a25b4e34578cbf9f68ebde5b9d3177045c1f0eac85aa73b200643cef6"
 dependencies = [
  "futures",
  "log",
- "netsim-embed-core",
+ "netsim-embed-core 0.4.2",
  "rand",
 ]
 
 [[package]]
 name = "netsim-embed-router"
 version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7981b4047459f5fce6c1e922ea4cf2d7d4a8fc6774f9dae07e1ac975dfc3ebf"
 dependencies = [
  "async-global-executor",
  "futures",
  "libpacket",
  "log",
- "netsim-embed-core",
+ "netsim-embed-core 0.4.2",
 ]
 
 [[package]]
@@ -2128,11 +2121,11 @@ dependencies = [
  "futures-core",
  "hashdb",
  "log",
- "nalgebra 0.30.1",
+ "nalgebra",
  "petgraph",
  "rand",
  "replace_with",
- "rkyv 0.7.39 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rkyv",
  "rkyv_codec",
  "serde",
  "slotmap",
@@ -2679,20 +2672,7 @@ dependencies = [
  "hashbrown 0.12.2",
  "ptr_meta",
  "rend",
- "rkyv_derive 0.7.39 (registry+https://github.com/rust-lang/crates.io-index)",
- "seahash",
-]
-
-[[package]]
-name = "rkyv"
-version = "0.7.39"
-source = "git+https://github.com/rkyv/rkyv#49edc59881ad72c9eacfb8929b7ae670e21cb5c5"
-dependencies = [
- "bytecheck",
- "hashbrown 0.12.2",
- "ptr_meta",
- "rend",
- "rkyv_derive 0.7.39 (git+https://github.com/rkyv/rkyv)",
+ "rkyv_derive",
  "seahash",
 ]
 
@@ -2708,7 +2688,7 @@ dependencies = [
  "futures",
  "futures_codec",
  "pin-project 1.0.11",
- "rkyv 0.7.39 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rkyv",
  "thiserror",
  "unsigned-varint",
 ]
@@ -2718,16 +2698,6 @@ name = "rkyv_derive"
 version = "0.7.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6eaedadc88b53e36dd32d940ed21ae4d850d5916f2581526921f553a72ac34c4"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "rkyv_derive"
-version = "0.7.39"
-source = "git+https://github.com/rkyv/rkyv#49edc59881ad72c9eacfb8929b7ae670e21cb5c5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2930,9 +2900,9 @@ dependencies = [
  "futures-delay-queue",
  "futures-intrusive",
  "log",
- "nalgebra 0.31.0",
+ "nalgebra",
  "netsim-embed",
- "netsim-embed-machine",
+ "netsim-embed-machine 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "node",
  "petgraph",
  "rand",

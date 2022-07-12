@@ -1,7 +1,7 @@
 #![allow(unused)]
 
-use iced::{Align, Application, Column, Container, Element, Font, Length, Text};
-use iced_aw::{TabBarPosition, TabLabel, Tabs};
+use iced::{Font, Length, alignment::{Horizontal, Vertical}, pure::{Application, Element, container, column, text}};
+use iced_aw::pure::{TabBarPosition, TabLabel, Tabs};
 
 const HEADER_SIZE: u16 = 32;
 const TAB_PADDING: u16 = 16;
@@ -67,7 +67,7 @@ impl TabBar {
 		None
 	}
 
-	pub fn view(&mut self) -> Element<'_, Message> {
+	pub fn view(&self) -> Element<'_, Message> {
 		Tabs::new(self.active_tab, Message::TabSelected)
 			.push(self.network_tab.tab_label(), self.network_tab.view().map(|m|Message::NetworkTab(m)))
 			.push(self.dither_tab.tab_label(), self.dither_tab.view().map(|m|Message::DitherTab(m)))
@@ -85,19 +85,19 @@ trait Tab {
 
 	fn tab_label(&self) -> TabLabel;
 
-	fn view(&mut self) -> Element<'_, Self::Message> {
-		let column = Column::new()
+	fn view(&self) -> Element<'_, Self::Message> {
+		let column = column()
 			//.push(Text::new(self.title()).size(HEADER_SIZE))
 			.push(self.content());
 
-		Container::new(column)
+		container(column)
 			.width(Length::Fill)
 			.height(Length::Fill)
-			.align_x(Align::Center)
-			.align_y(Align::Center)
+			.align_x(Horizontal::Center)
+			.align_y(Vertical::Center)
 			//.padding(TAB_PADDING)
 			.into()
 	}
 
-	fn content(&mut self) -> Element<'_, Self::Message>;
+	fn content(&self) -> Element<'_, Self::Message>;
 }

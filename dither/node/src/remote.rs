@@ -340,12 +340,12 @@ impl<Net: Network> Remote<Net> {
 									},
 									ArchivedNodePacket::Info { route_coord, active_peers, active, prompting_node: _ } => {
 										direct.send_packet(&mut writer, ping_id, &NodePacket::Ack, true).await?;
-										direct.route_coord = *route_coord;
-										direct.remote_count = *active_peers;
+										direct.route_coord = route_coord.deserialize(&mut Infallible).unwrap();
+										direct.remote_count = active_peers.deserialize(&mut Infallible).unwrap();
 										direct.considered_active = *active;
 		
 										// TODO: deal with prompting_node (figure out if it is even necessary)
-										node_action.send(NodeAction::RegisterPeer(session_info_reader.remote_idx, route_coord.clone())).await?;
+										node_action.send(NodeAction::RegisterPeer(session_info_reader.remote_idx, direct.route_coord.clone())).await?;
 										direct.attempt_sync(&shared, self_node_id);
 									},
 									ArchivedNodePacket::RequestPeers { nearby } => {

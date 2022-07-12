@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
 pub use iced::Settings;
-use iced::{executor, Application, Clipboard, Command, Element, Subscription};
+use iced::{executor, Command, Subscription, pure::{Application, Element}};
 
+use iced_native::command::Action;
 use sim::{InternetAction, InternetError};
 
 use crate::subscription::{self, Event};
@@ -35,7 +36,7 @@ impl Application for NetSimApp {
 	fn new(_flags: NetSimAppSettings) -> (Self, Command<Self::Message>) {
 		(
 			NetSimApp::Loading(loading::State { text_input_string: "./target/internet.bin".into(), valid_file: true, ..Default::default() }),
-			Command::from(async { Self::Message::LoadingMessage(loading::Message::TriggerLoad) }), // Trigger netsim load on startup
+			Command::single(Action::Future(Box::pin(async { Self::Message::LoadingMessage(loading::Message::TriggerLoad) }))),
 		)
 	}
 
@@ -59,14 +60,14 @@ impl Application for NetSimApp {
 		}
 	}
 
-	fn update(&mut self, message: Message, clipboard: &mut Clipboard) -> Command<Self::Message> {
+	fn update(&mut self, message: Message) -> Command<Self::Message> {
 		match self {
 			NetSimApp::Loading(state) => {
 				log::trace!("[Loading] Received Message: {:?}", message);
 				match message {
 					Message::LoadingMessage(message) => {
 						if let Some(message) = state.process(message) {
-							self.update(message, clipboard);
+							self.update(message);
 						}
 					}
 					Message::LoadInternet => {
@@ -97,7 +98,7 @@ impl Application for NetSimApp {
 				match message {
 					Message::LoadedMessage(loaded_message) => {
 						if let Some(message) = state.process(loaded_message) {
-							self.update(message, clipboard);
+							self.update(message);
 						}
 					}
 					Message::InternetAction(action) => {
@@ -125,7 +126,7 @@ impl Application for NetSimApp {
 		Command::none()
 	}
 
-	fn view(&mut self) -> Element<Message> {
+	fn view(&self) -> Element<Message> {
 		match self {
 			NetSimApp::Loading(state) => state.view().map(|msg| Message::LoadingMessage(msg)),
 			NetSimApp::Loaded(state) => state.view().map(|msg| Message::LoadedMessage(msg)),

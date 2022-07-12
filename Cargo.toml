@@ -9,12 +9,14 @@ members = [
 	"sim/device", # Dither Client controlled by stdin and stdout by sim/gui
 ]
 
-# [patch.crates-io]
-# netsim-embed = { path = "vendor/netsim-embed" }
+[patch.crates-io]
+nalgebra = { path = "vendor/nalgebra" }
+netsim-embed = { path = "vendor/netsim-embed" }
 # iced = { path = "vendor/iced" }
 # iced_futures = { path = "vendor/iced/futures" }
 # iced_core = { path = "vendor/iced/core" }
 # iced_graphics = { path = "vendor/iced/graphics" }
+
 
 [workspace.metadata.nix]
 nativeBuildInputs = [

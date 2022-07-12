@@ -1,12 +1,9 @@
-use iced::{Align, Button, Column, Element, Row, Text, TextInput, button, text_input};
+use iced::{Alignment, pure::{Element, button, column, row, text, text_input}};
 
 use crate::subscription::InternetRecipe;
 
 #[derive(Default)]
 pub struct State {
-	pub text_input: text_input::State,
-	pub load_button: button::State,
-
 	pub text_input_string: String,
 	pub valid_file: bool,
 
@@ -36,20 +33,13 @@ impl State {
 		}
 	}
 
-	pub fn view(&mut self) -> Element<Message> {
-		Column::new().align_items(Align::Center).padding(20).spacing(20)
-			.push(Row::new()
-				.push(TextInput::new(
-					&mut self.text_input,
-					"Simulation Binary File",
-					&self.text_input_string,
-					|string| Message::TextBoxUpdate(string),
-				))
-				.push(Text::new(if self.valid_file { "√" } else { "" }))
-			)
-			.push(
-				Button::new("Load Simulation").on_press(Message::TriggerLoad),
-			)
-			.into()
+	pub fn view(&self) -> Element<Message> {
+		column().align_items(Alignment::Center).padding(20).spacing(20).push(
+			row()
+				.push(text_input("Simulation Binary File", &self.text_input_string, |string| Message::TextBoxUpdate(string),))
+		.push(text(if self.valid_file { "√" } else { "" }))
+		).push(
+			button("Load Simulation").on_press(Message::TriggerLoad),
+		).into()
 	}
 }

@@ -1,8 +1,8 @@
 use std::net::Ipv4Addr;
 
 use super::{Icon, Tab};
-use iced::{Align, Button, Color, Column, Container, Element, Length, Point, Row, Text, Vector, button, canvas::{self, Path, Stroke, event}, keyboard};
-use iced_aw::TabLabel;
+use iced::{Color, Length, Point, Row, Vector, alignment::{Horizontal, Vertical}, button, pure::{Element, column, container, widget::canvas::{self, Path, Stroke, event}}, keyboard};
+use iced_aw::pure::TabLabel;
 use petgraph::Undirected;
 use sim::{FieldPosition, NodeIdx, NodeType, WireIdx};
 
@@ -45,7 +45,7 @@ impl NetworkNode for NetworkTabNode {
 		frame.fill_text(canvas::Text { content:
 			label,
 			position: point, color: Color::BLACK, size: radius,
-			horizontal_alignment: iced::HorizontalAlignment::Center, vertical_alignment: iced::VerticalAlignment::Center,
+			horizontal_alignment: Horizontal::Center, vertical_alignment: Vertical::Center,
 			..Default::default()
 		});
 	}
@@ -144,7 +144,7 @@ impl NetworkTab {
 						match keyboard_event {
 							keyboard::Event::KeyReleased { key_code, modifiers } => {
 								match modifiers {
-									keyboard::Modifiers { shift: false, control: false, alt: false, logo: false } => {
+									_ => {
 										match key_code {
 											keyboard::KeyCode::N => {
 												return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Network));
@@ -161,7 +161,7 @@ impl NetworkTab {
 											_ => {}
 										}
 									}
-									keyboard::Modifiers { shift: false, control: true, alt: false, logo: false } => {
+									keyboard::Modifiers::CTRL => {
 										match key_code {
 											keyboard::KeyCode::S => {
 												return Some(loaded::Message::TriggerSave);
@@ -201,13 +201,12 @@ impl Tab for NetworkTab {
 		TabLabel::IconText(Icon::CentralizedNetwork.into(), self.title())
 	}
 
-	fn content(&mut self) -> Element<'_, Self::Message> {
-		let content = Column::new().push(self.map.view().map(move |message| Message::NetMapMessage(message)));
-
-		Container::new(content)
-			.width(Length::Fill)
-			.height(Length::Fill)
-			.into()
+	fn content(&self) -> Element<'_, Self::Message> {
+		container(
+			column().push(self.map.view().map(move |message| Message::NetMapMessage(message)))
+		).width(Length::Fill)
+		.height(Length::Fill)
+		.into()
 	}
 }
 

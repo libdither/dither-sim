@@ -1,4 +1,4 @@
-use iced::{Column, Container, Element, TextInput, button, text_input};
+use iced::pure::{container, column, text_input, Element};
 use libdither::DitherCommand;
 use sim::{FieldPosition, InternetAction, InternetEvent, NodeIdx, NodeType};
 use futures::channel::mpsc;
@@ -7,11 +7,7 @@ use crate::{subscription::InternetRecipe, tabs::{self, TabBar, dither_tab, netwo
 
 #[derive(Default)]
 pub struct TopBar {
-	step_sim: button::State,
 	toggle_sim: bool,
-	add_machine: button::State,
-	add_network: button::State,
-	action_box_state: text_input::State,
 	action_box_text: String,
 }
 
@@ -169,8 +165,8 @@ impl State {
 			_ => { log::warn!("received unimplemented loaded::Message: {:?}", message); None }
 		}
 	}
-	pub fn view(&mut self) -> Element<Message> {
-		Column::new()
+	pub fn view(&self) -> Element<Message> {
+		column()
 			/* .push(
 				Row::new().push(
 					Text::new("Top Bar")
@@ -191,11 +187,11 @@ impl State {
 				) */
 			) */
 			.push(
-				TextInput::new(&mut self.top_bar.action_box_state, "DebugPrint", &self.top_bar.action_box_text, Message::ActionBoxUpdate)
+				text_input("DebugPrint", &self.top_bar.action_box_text, Message::ActionBoxUpdate)
 				.on_submit(Message::ActionBoxSubmit)
 			)
 			.push(
-				Container::new(
+				container(
 					self.tabs.view().map(move |m| Message::TabUpdate(m))
 				)
 			).into()
