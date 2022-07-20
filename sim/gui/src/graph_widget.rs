@@ -1,6 +1,8 @@
+//! Generalized module for displaying and interacting with map-like data.
+
 #![allow(unused)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use iced::{Color, Length, Point, Rectangle, Vector, canvas::event::Status, keyboard, mouse, pure::{Element, widget::canvas::{self, Canvas, Cache, Cursor, Event, Frame, Geometry, Path, Stroke, Text, event}}};
 use nalgebra::Vector2;
@@ -10,6 +12,7 @@ use either::Either;
 pub use petgraph::{Directed, Undirected};
 use sim::FieldPosition;
 
+/// Represents current interaction with the network map.
 #[derive(Derivative, Debug, PartialEq)]
 #[derivative(Default)]
 pub enum Interaction {
@@ -29,6 +32,8 @@ pub enum Interaction {
 	/// Connecting two nodes
 	Connecting { from: NodeIndex, candidate: Either<Point, NodeIndex> },
 }
+
+// Represents a node on the map.
 pub trait NetworkNode: Sized + 'static {
 	/// Unique ID used identify node in another context
 	type NodeId: Sized + Clone + PartialOrd + PartialEq + Eq + std::hash::Hash;
@@ -51,7 +56,7 @@ pub trait NetworkEdge<N: NetworkNode>: Sized + 'static {
 	//fn unique_connection(&self) -> (usize, usize); // Useful when adding edge to graph
 }
 
-pub struct NetworkMap<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> {
+pub struct GraphWidget<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug> {
 	pub nodes: Graph<N, E, Ty>, // Node graph data structure
 	node_id_map: HashMap<N::NodeId, NodeIndex>, // Maps unique node ids to indicies into local node storage
 	edge_id_map: HashMap<E::EdgeId, EdgeIndex>,
@@ -63,10 +68,11 @@ pub struct NetworkMap<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> {
 
 	pub global_cursor_position: Point, // Position of cursor in the global coordinate plane (i.e. before scale and translation)
 	selected_node: Option<NodeIndex>, // Current selected node
+	handle_keyboard_event: fn(keyboard::Event) -> Option<Message<N, E, M>>, // Allow for passing of function to handle events
 }
 
 #[derive(Debug, Clone)]
-pub enum Message<N: NetworkNode, E: NetworkEdge<N>> {
+pub enum Message<N: NetworkNode, E: NetworkEdge<N>, M: Sized + fmt::Debug> {
 	// Events
 	EdgeClicked(E::EdgeId),
 	NodeDragged(N::NodeId, Point),
@@ -81,9 +87,9 @@ pub enum Message<N: NetworkNode, E: NetworkEdge<N>> {
 	ScaleMoveCanvas(f32, Vector),
 
 	// Data output
-	CanvasEvent(Event),
+	CustomEvent(M),
 }
-impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> NetworkMap<N, E, Ty> {
+impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug> GraphWidget<N, E, Ty, M> {
 	const MIN_SCALING: f32 = 0.1;
 	const MAX_SCALING: f32 = 50.0;
 	const SCALING_SPEED: f32 = 30.0;
@@ -133,7 +139,7 @@ impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> NetworkMap<N, E, Ty> {
 		self.node_cache.clear();
 	}
 
-	pub fn new() -> Self {
+	pub fn new(handle_keyboard_event: fn(keyboard::Event) -> Option<Message<N, E, M>>) -> Self {
 		Self {
 			nodes: Graph::default(),
 			node_id_map: HashMap::default(),
@@ -145,9 +151,10 @@ impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> NetworkMap<N, E, Ty> {
 			translation: Default::default(),
 			global_cursor_position: Default::default(),
 			selected_node: None,
+			handle_keyboard_event,
 		}
 	}
-	pub fn update(&mut self, message: Message<N, E>) {
+	pub fn update(&mut self, message: Message<N, E, M>) {
 		match message {
 			Message::ScaleMoveCanvas(scale, translation) => {
 				self.scale = scale;
@@ -165,7 +172,7 @@ impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> NetworkMap<N, E, Ty> {
 			_ => {},
 		}
 	}
-	pub fn view(&self) -> Element<Message<N, E>> {
+	pub fn view(&self) -> Element<Message<N, E, M>> {
 		Canvas::new(self)
 			.width(Length::Fill)
 			.height(Length::Fill)
@@ -173,7 +180,7 @@ impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> NetworkMap<N, E, Ty> {
 	}
 }
 
-impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Message<N, E>> for NetworkMap<N, E, Ty> {
+impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug> canvas::Program<Message<N, E, M>> for GraphWidget<N, E, Ty, M> {
 	type State = Interaction;
 	
 	fn update(
@@ -182,7 +189,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 		event: Event,
 		bounds: Rectangle,
 		cursor: Cursor,
-	) -> (Status, Option<Message<N, E>>) {
+	) -> (Status, Option<Message<N, E, M>>) {
 		let center = Vector::new(bounds.width / 2.0, bounds.height / 2.0);
 
 		let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
@@ -191,9 +198,9 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 			return (Status::Ignored, None);
 		};
 
-		let ret: (Option<Interaction>, Option<Message<N, E>>) = match event {
-			Event::Keyboard(keyboard::Event::KeyReleased { key_code, modifiers }) => {
-				match modifiers {
+		let ret: (Option<Interaction>, Option<Message<N, E, M>>) = match event {
+			Event::Keyboard(keyboard_event) => match keyboard_event {
+				keyboard::Event::KeyReleased { key_code, modifiers } => match modifiers {
 					_ if modifiers.is_empty() => {
 						match key_code {
 							// Trigger connecting two nodes
@@ -208,13 +215,14 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType> canvas::Program<Messag
 									(Some(Interaction::MovingNode { index: selected, initial_position: self.global_cursor_position }), Some(Message::ClearOverlayCache))
 								} else { (None, None) }
 							}
-							_ => (None, None)
+							_ => (None, (self.handle_keyboard_event)(keyboard_event))
 						}
 					}
-					_ => (None, None),
+					_ => (None, (self.handle_keyboard_event)(keyboard_event)),
 				}
+				_ => (None, (self.handle_keyboard_event)(keyboard_event))
 			}
-			Event::Keyboard(_) => (None, None),
+			Event::Keyboard(event) => (None, (self.handle_keyboard_event)(event)),
 			Event::Mouse(mouse_event) => {
 				match mouse_event {
 					mouse::Event::ButtonPressed(button) => {

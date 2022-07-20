@@ -6,7 +6,7 @@ use iced_aw::pure::TabLabel;
 use petgraph::Undirected;
 use sim::{FieldPosition, NodeIdx, NodeType, WireIdx};
 
-use crate::{gui::loaded, network_map::{self, NetworkEdge, NetworkMap, NetworkNode}};
+use crate::{gui::loaded, graph_widget::{self, NetworkEdge, GraphWidget, NetworkNode}};
 
 #[derive(Clone, Debug)]
 pub struct NetworkTabNode {
@@ -73,6 +73,16 @@ impl NetworkEdge<NetworkTabNode> for NetworkTabEdge {
 		frame.stroke(&Path::line(Point::ORIGIN + from, Point::ORIGIN + to), Stroke { color: Color::from_rgb8(0, 0, 0), width: 3.0, ..Default::default() });
 	}
 }
+#[derive(Debug, Clone)]
+pub enum NetworkMapEvent {
+	AddMachine,
+	AddNetwork,
+	TriggerSave,
+	TriggerReload,
+	TriggerDebugPrint,
+}
+type NetworkMapMessage = graph_widget::Message<NetworkTabNode, NetworkTabEdge, NetworkMapEvent>;
+type NetworkMap = graph_widget::GraphWidget<NetworkTabNode, NetworkTabEdge, Undirected, NetworkMapEvent>;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -84,21 +94,57 @@ pub enum Message {
 	RemoveConnection(WireIdx),
 	RemoveNode(NodeIdx), // Removes edges too.
 
-	NetMapMessage(network_map::Message<NetworkTabNode, NetworkTabEdge>),
+	NetMapMessage(NetworkMapMessage),
 }
 
 pub struct NetworkTab {
-	map: NetworkMap<NetworkTabNode, NetworkTabEdge, Undirected>,
+	map: NetworkMap,
+}
+
+fn handle_keyboard_event(keyboard_event: keyboard::Event) -> Option<NetworkMapMessage> {
+	match keyboard_event {
+		keyboard::Event::KeyReleased { key_code, modifiers } => {
+			match modifiers {
+				_ if modifiers.is_empty() => {
+					match key_code {
+						keyboard::KeyCode::N => {
+							return Some(NetworkMapMessage::CustomEvent(NetworkMapEvent::AddNetwork));
+						}
+						keyboard::KeyCode::M => {
+							return Some(NetworkMapMessage::CustomEvent(NetworkMapEvent::AddMachine));
+						}
+						_ => None
+					}
+				}
+				keyboard::Modifiers::CTRL => {
+					match key_code {
+						keyboard::KeyCode::S => {
+							return Some(NetworkMapMessage::CustomEvent(NetworkMapEvent::TriggerSave));
+						}
+						keyboard::KeyCode::R => {
+							return Some(NetworkMapMessage::CustomEvent(NetworkMapEvent::TriggerReload));
+						}
+						keyboard::KeyCode::P => {
+							return Some(NetworkMapMessage::CustomEvent(NetworkMapEvent::TriggerDebugPrint));
+						}
+						_ => None,
+					}
+				}
+				_ => None
+			}
+		}
+		_ => None
+	}
 }
 
 impl NetworkTab {
 	pub fn new() -> Self {
 		Self {
-			map: NetworkMap::new(),
+			map: GraphWidget::new(handle_keyboard_event),
 		}
 	}
 	pub fn clear(&mut self) {
-		self.map = NetworkMap::new();
+		self.map = GraphWidget::new(handle_keyboard_event);
 	}
 
 	fn mouse_field_position(&self) -> FieldPosition {
@@ -121,9 +167,7 @@ impl NetworkTab {
 			Message::RemoveNode(idx) => {
 				self.map.remove_node(idx);
 			},
-			Message::UpdateMachine(id, info) => {
-				
-			},
+			Message::UpdateMachine(id, info) => {},
     		Message::UpdateNetwork(id, info) => {},
 			
 			Message::UpdateConnection(wire_idx, from, to, activation) => {
@@ -134,46 +178,18 @@ impl NetworkTab {
 			}
 			Message::NetMapMessage(netmap_msg) => {
 				match netmap_msg {
-					network_map::Message::TriggerConnection(from, to) => {
+					NetworkMapMessage::TriggerConnection(from, to) => {
 						return Some(loaded::Message::ConnectNode(from, to));
 					},
-					network_map::Message::NodeDragged(node, point) => {
+					NetworkMapMessage::NodeDragged(node, point) => {
 						return Some(loaded::Message::MoveNode(node, FieldPosition::new(point.x as i32, point.y as i32)));
 					}
-					network_map::Message::CanvasEvent(canvas::Event::Keyboard(keyboard_event)) => {
-						match keyboard_event {
-							keyboard::Event::KeyReleased { key_code, modifiers } => {
-								match modifiers {
-									_ => {
-										match key_code {
-											keyboard::KeyCode::N => {
-												return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Network));
-											}
-											keyboard::KeyCode::M => {
-												return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Machine));
-											}
-											_ => {}
-										}
-									}
-									keyboard::Modifiers::CTRL => {
-										match key_code {
-											keyboard::KeyCode::S => {
-												return Some(loaded::Message::TriggerSave);
-											}
-											keyboard::KeyCode::R => {
-												return Some(loaded::Message::TriggerReload);
-											}
-											keyboard::KeyCode::P => {
-												return Some(loaded::Message::DebugPrint);
-											}
-											_ => {},
-										}
-									}
-									_ => {}
-								}
-							}
-							_ => {}
-						}
+					NetworkMapMessage::CustomEvent(event) => match event {
+						NetworkMapEvent::AddMachine => return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Machine)),
+						NetworkMapEvent::AddNetwork => return Some(loaded::Message::AddNode(self.mouse_field_position(), NodeType::Network)),
+						NetworkMapEvent::TriggerSave => return Some(loaded::Message::TriggerSave),
+						NetworkMapEvent::TriggerReload => return Some(loaded::Message::TriggerReload),
+						NetworkMapEvent::TriggerDebugPrint => return Some(loaded::Message::DebugPrint),
 					}
 					_ => {},
 				}

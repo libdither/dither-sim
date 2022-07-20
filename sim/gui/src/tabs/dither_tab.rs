@@ -8,7 +8,7 @@ use libdither::{DitherCommand, Address};
 use petgraph::Undirected;
 use sim::{FieldPosition, MachineInfo, NodeID, NodeIdx, NodeType, RouteCoord, WireIdx};
 
-use crate::{gui::loaded, network_map::{self, NetworkEdge, NetworkMap, NetworkNode}};
+use crate::{gui::loaded, graph_widget::{self, NetworkEdge, GraphWidget, NetworkNode}};
 
 #[derive(Clone, Debug)]
 pub struct DitherTabNode {
@@ -91,27 +91,62 @@ impl NetworkEdge<DitherTabNode> for DitherTabEdge {
 }
 
 #[derive(Debug, Clone)]
+pub enum DitherMapEvent {
+	TriggerSave,
+	TriggerReload,
+	TriggerDebugPrint,
+}
+
+type DitherMapMessage = graph_widget::Message<DitherTabNode, DitherTabEdge, DitherMapEvent>;
+type DitherMap = graph_widget::GraphWidget<DitherTabNode, DitherTabEdge, Undirected, DitherMapEvent>;
+
+#[derive(Debug, Clone)]
 pub enum Message {
 	UpdateMachine(NodeIdx, sim::MachineInfo),
 	UpdateConnection(WireIdx, NodeIdx, NodeIdx, bool),
 	RemoveConnection(WireIdx),
 	RemoveNode(NodeIdx), // Removes edges too.
 
-	NetMapMessage(network_map::Message<DitherTabNode, DitherTabEdge>),
+	MapMessage(DitherMapMessage),
 }
 
 pub struct DitherTab {
-	map: NetworkMap<DitherTabNode, DitherTabEdge, Undirected>,
+	map: DitherMap
+}
+
+fn handle_keyboard_event(keyboard_event: keyboard::Event) -> Option<DitherMapMessage> {
+	match keyboard_event {
+		keyboard::Event::KeyReleased { key_code, modifiers } => {
+			match modifiers {
+				keyboard::Modifiers::CTRL => {
+					match key_code {
+						keyboard::KeyCode::S => {
+							return Some(DitherMapMessage::CustomEvent(DitherMapEvent::TriggerSave));
+						}
+						keyboard::KeyCode::R => {
+							return Some(DitherMapMessage::CustomEvent(DitherMapEvent::TriggerReload));
+						}
+						keyboard::KeyCode::P => {
+							return Some(DitherMapMessage::CustomEvent(DitherMapEvent::TriggerDebugPrint));
+						}
+						_ => None,
+					}
+				}
+				_ => None
+			}
+		}
+		_ => None
+	}
 }
 
 impl DitherTab {
 	pub fn new() -> Self {
 		Self {
-			map: NetworkMap::new(),
+			map: GraphWidget::new(handle_keyboard_event),
 		}
 	}
 	pub fn clear(&mut self) {
-		self.map = NetworkMap::new();
+		self.map = GraphWidget::new(handle_keyboard_event);
 	}
 
 	fn mouse_field_position(&self) -> FieldPosition {
@@ -141,9 +176,9 @@ impl DitherTab {
 				Message::RemoveConnection(wire_idx) => {
 					self.map.remove_edge(wire_idx);
 				}
-				Message::NetMapMessage(netmap_msg) => {
+				Message::MapMessage(netmap_msg) => {
 					match netmap_msg {
-						network_map::Message::TriggerConnection(from, to) => {
+						DitherMapMessage::TriggerConnection(from, to) => {
 							let node = self.map.node(to).ok_or(anyhow!("No node: {}", to))?;
 							let network_ip = SocketAddr::new(
 								node.network_ip.clone().ok_or(anyhow!("Node {:?} does not have a network ip", to))?.into(),
@@ -152,30 +187,10 @@ impl DitherTab {
 							log::debug!("Connecting node: {:?} to {:?}", from, node);
 							return Some(loaded::Message::DitherCommand(from, DitherCommand::Bootstrap(node.node_id.clone(), network_ip)));
 						},
-						network_map::Message::CanvasEvent(canvas::Event::Keyboard(keyboard_event)) => {
-							match keyboard_event {
-								keyboard::Event::KeyReleased { key_code, modifiers } => {
-									match modifiers {
-										_ => {}
-										keyboard::Modifiers::CTRL => {
-											match key_code {
-												keyboard::KeyCode::S => {
-													return Some(loaded::Message::TriggerSave);
-												}
-												keyboard::KeyCode::R => {
-													return Some(loaded::Message::TriggerReload);
-												}
-												keyboard::KeyCode::P => {
-													return Some(loaded::Message::DebugPrint);
-												}
-												_ => {},
-											}
-										}
-										_ => {}
-									}
-								}
-								_ => {}
-							}
+						DitherMapMessage::CustomEvent(event) => match event {
+							DitherMapEvent::TriggerSave => return Some(loaded::Message::TriggerSave),
+							DitherMapEvent::TriggerReload => return Some(loaded::Message::TriggerReload),
+							DitherMapEvent::TriggerDebugPrint => return Some(loaded::Message::DebugPrint),
 						}
 						_ => {},
 					}
@@ -203,7 +218,7 @@ impl Tab for DitherTab {
 
 	fn content(&self) -> Element<'_, Self::Message> {
 		container(
-			column().push(self.map.view().map(move |message| Message::NetMapMessage(message)))
+			column().push(self.map.view().map(move |message| Message::MapMessage(message)))
 		).width(Length::Fill)
 		.height(Length::Fill)
 		.into()

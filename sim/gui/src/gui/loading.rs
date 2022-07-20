@@ -37,7 +37,7 @@ impl State {
 		column().align_items(Alignment::Center).padding(20).spacing(20).push(
 			row()
 				.push(text_input("Simulation Binary File", &self.text_input_string, |string| Message::TextBoxUpdate(string),))
-		.push(text(if self.valid_file { "√" } else { "" }))
+		.push(text(if self.valid_file { "Valid" } else { "Unknown File" }))
 		).push(
 			button("Load Simulation").on_press(Message::TriggerLoad),
 		).into()

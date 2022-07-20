@@ -4,13 +4,11 @@
 extern crate derivative;
 #[macro_use]
 extern crate anyhow;
-#[macro_use]
-extern crate thiserror;
 
 use iced::{pure::{Application}, Settings, window};
 use crate::gui::{NetSimApp, NetSimAppSettings};
 pub mod tabs;
-pub mod network_map;
+pub mod graph_widget;
 mod subscription;
 mod gui;
 

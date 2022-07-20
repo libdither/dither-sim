@@ -264,7 +264,7 @@ impl Internet {
 	/// Run network function
 	/// IMPORTANT: This function must be called from an unshare() context (i.e. a kernel virtual network)
 	pub async fn run(mut self, mut runtime: InternetRuntime) {
-		std::fs::metadata(&self.device_exec).expect("no device file!");
+		std::fs::metadata(&self.device_exec).expect("no device file! please compile an instance of dither-sim device");
 		let runtime = &mut runtime;
 
 		let mut action_receiver = runtime.action_receiver.take().expect("there should be an action receiver here");
