@@ -35,7 +35,7 @@ impl Application for NetSimApp {
 
 	fn new(_flags: NetSimAppSettings) -> (Self, Command<Self::Message>) {
 		(
-			NetSimApp::Loading(loading::State { text_input_string: "./target/internet.bin".into(), valid_file: false, ..Default::default() }),
+			NetSimApp::Loading(loading::State { text_input_string: "./network.bin".into(), valid_file: false, ..Default::default() }),
 			Command::none()
 			//Command::single(Action::Future(Box::pin(async { Self::Message::LoadingMessage(loading::Message::TriggerLoad) }))),
 		)

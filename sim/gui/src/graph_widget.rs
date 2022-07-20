@@ -82,7 +82,7 @@ pub enum Message<N: NetworkNode, E: NetworkEdge<N>, M: Sized + fmt::Debug> {
 	MouseMoved(Point),
 	ClearOverlayCache,
 	ClearNodeCache,
-	SelectNode(NodeIndex),
+	SelectNode(Option<NodeIndex>),
 	MoveCanvas(Vector),
 	ScaleMoveCanvas(f32, Vector),
 
@@ -160,13 +160,22 @@ impl<N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug> Gra
 				self.scale = scale;
 				self.translation = translation;
 				self.node_cache.clear();
+				self.overlay_cache.clear();
 			}
 			Message::MoveCanvas(translation) => {
 				self.translation = translation;
 				self.node_cache.clear();
+				self.overlay_cache.clear();
 			}
-			Message::MouseMoved(global_position) => self.global_cursor_position = global_position,
-			Message::SelectNode(index) => self.selected_node = Some(index),
+			Message::MouseMoved(global_position) => {
+				self.global_cursor_position = global_position;
+				self.overlay_cache.clear();
+			},
+			Message::SelectNode(index) => {
+				self.selected_node = index;
+				self.node_cache.clear();
+				self.overlay_cache.clear();
+			},
 			Message::ClearNodeCache => self.node_cache.clear(),
 			Message::ClearOverlayCache => self.overlay_cache.clear(),
 			_ => {},
@@ -192,11 +201,8 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug>
 	) -> (Status, Option<Message<N, E, M>>) {
 		let center = Vector::new(bounds.width / 2.0, bounds.height / 2.0);
 
-		let cursor_position = if let Some(position) = cursor.position_in(&bounds) {
-			position
-		} else {
-			return (Status::Ignored, None);
-		};
+		let cursor_position = if let Some(position) = cursor.position_in(&bounds) { position }
+		else { return (Status::Ignored, None); };
 
 		let ret: (Option<Interaction>, Option<Message<N, E, M>>) = match event {
 			Event::Keyboard(keyboard_event) => match keyboard_event {
@@ -230,7 +236,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug>
 						match button {
 							mouse::Button::Left => {
 								match *state {
-									Interaction::Hovering(index) => (Some(Interaction::PressingNode { pos: cursor_position, index }), None),
+									Interaction::Hovering(index) => (Some(Interaction::PressingNode { pos: self.global_cursor_position, index }), None),
 									Interaction::Connecting { from: _, candidate: _ } => (None, None),
 									Interaction::MovingNode { index, initial_position } => {
 										let node = &self.nodes[index];
@@ -238,7 +244,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug>
 											Point::ORIGIN + node.position() + (self.global_cursor_position.clone() - initial_position)
 										)))
 									}
-									_ => (Some(Interaction::PressingCanvas { pos: cursor_position }), None),
+									_ => (Some(Interaction::PressingCanvas { pos: self.global_cursor_position }), None),
 								}
 							}
 							_ => (None, None)
@@ -248,12 +254,19 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug>
 						match button {
 							mouse::Button::Left => {
 								match *state {
-									Interaction::PressingNode { index: node, .. } => {
-										(Some(Interaction::Hovering(node)), Some(Message::SelectNode(node)))
-									}
-									Interaction::Connecting { from, candidate: Either::Right(to) } => {
-										(Some(Interaction::None), Some(Message::TriggerConnection(self.nodes[from].unique_id(), self.nodes[to].unique_id())))
-									}
+									Interaction::PressingNode { index: node, .. } => (
+										Some(Interaction::Hovering(node)),
+										Some(Message::SelectNode(Some(node)))
+									),
+									Interaction::PressingCanvas { pos } => (
+										Some(Interaction::None),
+										Some(Message::SelectNode(None))
+									),
+									Interaction::Connecting { from, candidate: Either::Right(to) } => (
+										Some(Interaction::None),
+										Some(Message::TriggerConnection(self.nodes[from].unique_id(), self.nodes[to].unique_id()))
+									),
+									Interaction::Hovering(_) => (None, None),
 									_ => (Some(Interaction::None), None)
 								}
 							}
@@ -269,7 +282,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug>
 						match *state {
 							Interaction::PressingCanvas { pos: start } | Interaction::PressingNode { pos: start, .. } | Interaction::Panning { start } => {
 								if self.scale == 0.0 { panic!("scaling should never be zero") }
-								let translation = self.translation + (cursor_position - start) * (1.0 / self.scale);
+								let translation = (cursor_position - start) * (1.0 / self.scale);
 								(Some(Interaction::Panning {
 									start,
 								}), Some(Message::MoveCanvas(translation)))
@@ -283,7 +296,7 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug>
 								}, mouse_update_message)
 							}
 							Interaction::MovingNode { .. } => {
-								(None, Some(Message::ClearOverlayCache))
+								(None, mouse_update_message)
 							}
 							_ => {
 								let hovering = self.detect_hovering();
@@ -322,23 +335,6 @@ impl<'a, N: NetworkNode, E: NetworkEdge<N>, Ty: EdgeType, M: Sized + fmt::Debug>
 		if let Some(msg) = ret.1 {
 			(Status::Captured, Some(msg))
 		} else { (Status::Ignored, None) }
-		/* match ret {
-			(Some(interaction), msg) if interaction != *state => {
-				use Interaction::*;
-				match (&state, &interaction) {
-					(Hovering(_), _) | (_, Hovering(_)) => self.node_cache.clear(),
-					(Connecting { .. }, _) | (_, Connecting { .. }) => self.node_cache.clear(),
-					(Panning { .. }, _) | (_, Panning { .. }) => self.node_cache.clear(),
-					(PressingNode { .. }, _) => self.node_cache.clear(), // Unpress Node
-					(PressingCanvas { .. }, _) if self.selected_node.is_some() => { self.node_cache.clear(); self.selected_node = Option::None; },
-					_ => {},
-				}
-				*state = interaction;
-				self.overlay_cache.clear();
-				(event::Status::Captured, msg)
-			}
-			(_, msg) => (event::Status::Ignored, msg),
-		} */
 	}
 
 	fn draw(&self, state: &Self::State, bounds: Rectangle, _: Cursor) -> Vec<Geometry> {

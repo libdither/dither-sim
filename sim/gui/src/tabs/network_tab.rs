@@ -94,7 +94,7 @@ pub enum Message {
 	RemoveConnection(WireIdx),
 	RemoveNode(NodeIdx), // Removes edges too.
 
-	NetMapMessage(NetworkMapMessage),
+	MapMessage(NetworkMapMessage),
 }
 
 pub struct NetworkTab {
@@ -176,8 +176,8 @@ impl NetworkTab {
 			Message::RemoveConnection(wire_idx) => {
 				self.map.remove_edge(wire_idx);
 			}
-			Message::NetMapMessage(netmap_msg) => {
-				match netmap_msg {
+			Message::MapMessage(map_msg) => {
+				match map_msg {
 					NetworkMapMessage::TriggerConnection(from, to) => {
 						return Some(loaded::Message::ConnectNode(from, to));
 					},
@@ -191,7 +191,7 @@ impl NetworkTab {
 						NetworkMapEvent::TriggerReload => return Some(loaded::Message::TriggerReload),
 						NetworkMapEvent::TriggerDebugPrint => return Some(loaded::Message::DebugPrint),
 					}
-					_ => {},
+					_ => self.map.update(map_msg),
 				}
 			}
 			_ => {}
@@ -213,7 +213,7 @@ impl Tab for NetworkTab {
 
 	fn content(&self) -> Element<'_, Self::Message> {
 		container(
-			column().push(self.map.view().map(move |message| Message::NetMapMessage(message)))
+			column().push(self.map.view().map(move |message| Message::MapMessage(message)))
 		).width(Length::Fill)
 		.height(Length::Fill)
 		.into()
