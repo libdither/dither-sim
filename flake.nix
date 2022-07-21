@@ -14,8 +14,11 @@
 						eval = "$LD_LIBRARY_PATH${pkgs.vulkan-loader}/lib";
 					}
 					{
-						name = "NIX_CFLAGS_LINK";
-						eval = "-fuse-ld=lld";
+						name = "RUSTFLAGS";
+						value =
+							if common.pkgs.stdenv.isLinux
+							then "-C link-arg=-fuse-ld=mold -C target-cpu=native -Clink-arg=-Wl,--no-rosegment"
+							else "";
 					}
 				];
 			};

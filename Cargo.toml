@@ -20,11 +20,12 @@ num-complex = { git = "https://github.com/zyansheep/num-complex" }
 
 
 [workspace.metadata.nix]
+cCompiler = "gcc12"
 nativeBuildInputs = [
 	"cargo-edit",
-	"lldb",
 	"pkg-config",
 	"cmake",
+	"mold",
 ]
 buildInputs = [
 	"libxkbcommon",
