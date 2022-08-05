@@ -40,11 +40,13 @@ impl NetworkNode for NetworkTabNode {
 		if hover { let node_color = Color::from_rgb8(200, 200, 200); }
 		frame.fill(&Path::circle(point.clone(), radius), node_color);
 
-		let label = if let Some(addr) = self.ip_addr { format!("{addr}") }
-		else { format!("{}", self.id) };
+		let fp_str = format!("({}, {})", self.field_position.x, self.field_position.y);
+
+		let label = if let Some(addr) = self.ip_addr { format!("{addr}\n{}", fp_str) }
+		else { format!("{}\n{}", self.id, fp_str) };
 		frame.fill_text(canvas::Text { content:
 			label,
-			position: point, color: Color::BLACK, size: radius,
+			position: point, color: Color::BLACK, size: radius / 2.0,
 			horizontal_alignment: Horizontal::Center, vertical_alignment: Vertical::Center,
 			..Default::default()
 		});
