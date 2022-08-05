@@ -1291,7 +1291,7 @@ dependencies = [
  "iced_native",
  "libdither",
  "log",
- "nalgebra",
+ "nalgebra 0.31.0",
  "petgraph",
  "rand",
  "ron",
@@ -1916,9 +1916,25 @@ name = "nalgebra"
 version = "0.31.0"
 dependencies = [
  "approx",
+ "matrixmultiply",
+ "nalgebra-macros 0.1.0",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "serde",
+ "simba",
+ "typenum",
+]
+
+[[package]]
+name = "nalgebra"
+version = "0.31.0"
+source = "git+https://github.com/zyansheep/nalgebra?branch=dev#cd6eaf39ddf5d07430d0cc2d4906cdfa22768c60"
+dependencies = [
+ "approx",
  "bytecheck",
  "matrixmultiply",
- "nalgebra-macros",
+ "nalgebra-macros 0.1.0 (git+https://github.com/zyansheep/nalgebra?branch=dev)",
  "num-complex",
  "num-rational",
  "num-traits",
@@ -1932,6 +1948,16 @@ dependencies = [
 [[package]]
 name = "nalgebra-macros"
 version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "nalgebra-macros"
+version = "0.1.0"
+source = "git+https://github.com/zyansheep/nalgebra?branch=dev#cd6eaf39ddf5d07430d0cc2d4906cdfa22768c60"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2122,7 +2148,7 @@ dependencies = [
  "futures-core",
  "hashdb",
  "log",
- "nalgebra",
+ "nalgebra 0.31.0 (git+https://github.com/zyansheep/nalgebra?branch=dev)",
  "petgraph",
  "rand",
  "replace_with",
@@ -2910,7 +2936,7 @@ dependencies = [
  "futures-delay-queue",
  "futures-intrusive",
  "log",
- "nalgebra",
+ "nalgebra 0.31.0",
  "netsim-embed",
  "netsim-embed-machine 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "node",

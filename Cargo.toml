@@ -1,13 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-	"dither", # Cross-Platform Network Implementation of Dither API
+	# "dither", # Cross-Platform Network Implementation of Dither API
 
 	"sim",
 	# "sim/cli",
 	"sim/gui", # Gui simulation
 	"sim/device", # Dither Client controlled by stdin and stdout by sim/gui
 ]
+exclude = [ "dither" ]
 
 [patch.crates-io]
 nalgebra = { path = "vendor/nalgebra" }
