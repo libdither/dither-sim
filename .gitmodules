@@ -7,3 +7,6 @@
 [submodule "vendor/nalgebra"]
 	path = vendor/nalgebra
 	url = https://github.com/zyansheep/nalgebra
+[submodule "dither"]
+	path = dither
+	url = https://github.com/libdither/libdither
