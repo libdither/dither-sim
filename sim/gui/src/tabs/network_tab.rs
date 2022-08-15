@@ -121,6 +121,7 @@ fn handle_keyboard_event(keyboard_event: keyboard::Event) -> Option<NetworkMapMe
 				keyboard::Modifiers::CTRL => {
 					match key_code {
 						keyboard::KeyCode::S => {
+							log::debug!("Triggered Save");
 							return Some(NetworkMapMessage::CustomEvent(NetworkMapEvent::TriggerSave));
 						}
 						keyboard::KeyCode::R => {

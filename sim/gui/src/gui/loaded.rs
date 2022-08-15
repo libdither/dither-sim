@@ -135,7 +135,11 @@ impl State {
 
 			// Externally triggered events
 			Message::TriggerSave => {
-				self.net_action(InternetAction::SaveInternet("./target/internet.bin".to_owned())); None
+				log::debug!("Saving Network to: {:?}", self.internet_recipe.path);
+				if let Some(path) = &self.internet_recipe.path {
+					self.net_action(InternetAction::SaveInternet(path.clone()));
+				}
+				 None
 			}
 			Message::TriggerReload => {
 				self.net_action(InternetAction::RequestAllNodes); None
