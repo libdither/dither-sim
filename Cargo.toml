@@ -13,7 +13,6 @@ exclude = [ "dither" ]
 [patch.crates-io]
 nalgebra = { path = "vendor/nalgebra" }
 netsim-embed = { path = "vendor/netsim-embed" }
-num-complex = { git = "https://github.com/zyansheep/num-complex" }
 # iced = { path = "vendor/iced" }
 # iced_futures = { path = "vendor/iced/futures" }
 # iced_core = { path = "vendor/iced/core" }
